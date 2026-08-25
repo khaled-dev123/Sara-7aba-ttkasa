@@ -20,6 +20,8 @@ const marketSchema = z.object({
   phone: z.string().optional(),
   manager_name: z.string().optional(),
   is_active: z.boolean().default(true),
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 type MarketFormData = z.infer<typeof marketSchema>;
 
@@ -36,15 +38,15 @@ export default function MarketsPage() {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<MarketFormData>({
     resolver: zodResolver(marketSchema),
-    defaultValues: { name: "", address: "", phone: "", manager_name: "", is_active: true },
+    defaultValues: { name: "", address: "", phone: "", manager_name: "", is_active: true, username: "", password: "" },
   });
 
-  const openCreate = () => { setEditItem(null); reset({ name: "", address: "", phone: "", manager_name: "", is_active: true }); setDialogOpen(true); };
+  const openCreate = () => { setEditItem(null); reset({ name: "", address: "", phone: "", manager_name: "", is_active: true, username: "", password: "" }); setDialogOpen(true); };
   const openEdit = (m: Market) => { setEditItem(m); reset({ name: m.name, address: m.address, phone: m.phone, manager_name: m.manager_name, is_active: m.is_active }); setDialogOpen(true); };
 
   const onSubmit = async (data: MarketFormData) => {
     try {
-      if (editItem) { await updateMutation.mutateAsync({ id: editItem.id, data }); addToast({ title: "Market updated" }); }
+      if (editItem) { const { username: _, password: __, ...updateData } = data; await updateMutation.mutateAsync({ id: editItem.id, data: updateData }); addToast({ title: "Market updated" }); }
       else { await createMutation.mutateAsync(data); addToast({ title: "Market created" }); }
       setDialogOpen(false);
     } catch (err: any) { addToast({ title: "Error", description: err?.response?.data?.detail || "Failed", variant: "destructive" }); }
@@ -132,6 +134,20 @@ export default function MarketsPage() {
               <Label>Address</Label>
               <Input {...register("address")} placeholder="Address" />
             </div>
+            {!editItem && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Username</Label>
+                  <Input {...register("username")} placeholder="Login username" />
+                  {errors.username && <p className="text-xs text-destructive">{errors.username.message}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Password</Label>
+                  <Input {...register("password")} type="password" placeholder="Login password" />
+                  {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+                </div>
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>{editItem ? "Update" : "Create"}</Button>

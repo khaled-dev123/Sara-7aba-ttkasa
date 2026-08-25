@@ -27,9 +27,6 @@ class OrdersPerMarket(BaseModel):
     total_orders: int
     pending: int
     approved: int
-    prepared: int
-    on_route: int
-    delivered: int
     rejected: int
 
 

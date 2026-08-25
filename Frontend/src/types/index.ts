@@ -1,6 +1,5 @@
 export type UserRole = "admin" | "market" | "warehouse";
-export type OrderStatus = "pending" | "approved" | "prepared" | "on_route" | "delivered" | "rejected";
-export type DeliveryStatus = "prepared" | "on_route" | "delivered";
+export type OrderStatus = "pending" | "approved" | "rejected";
 
 export interface User {
   id: number;
@@ -14,12 +13,35 @@ export interface User {
 export interface UserWithMarket extends User {
   market_id: number | null;
   market_name: string | null;
+  available_roles: AvailableRole[];
+}
+
+export interface AvailableRole {
+  role: UserRole;
+  market_id?: number;
+  market_name?: string;
+}
+
+export interface Profile {
+  user_id: number;
+  username: string;
+  role: UserRole;
+  market_id: number | null;
+  market_name: string | null;
 }
 
 export interface TokenPair {
   access_token: string;
   token_type: string;
   refresh_token: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  available_roles: AvailableRole[];
+  requires_role_selection: boolean;
 }
 
 export interface Page<T> {
@@ -46,6 +68,12 @@ export interface Supplier {
   created_at: string;
 }
 
+export interface ReservedByMarket {
+  market_id: number;
+  market_name: string;
+  quantity: number;
+}
+
 export interface ProductDetail {
   id: number;
   name: string;
@@ -55,7 +83,10 @@ export interface ProductDetail {
   category_name: string | null;
   supplier_name: string | null;
   purchase_price: number;
+  supplier_price: number;
   current_stock: number;
+  reserved_stock?: number;
+  reserved_by_market?: ReservedByMarket[];
   minimum_stock: number;
   unit: string;
   image_url: string | null;
@@ -82,6 +113,8 @@ export interface OrderItem {
   product_name: string | null;
   sku: string | null;
   unit: string | null;
+  current_stock: number | null;
+  minimum_stock: number | null;
 }
 
 export interface OrderDetail {
@@ -97,27 +130,6 @@ export interface OrderDetail {
   market_name: string | null;
   market_phone: string | null;
   approved_by_username: string | null;
-  delivery_id: number | null;
-}
-
-export interface DeliveryItem {
-  id: number;
-  product_id: number;
-  quantity: number;
-}
-
-export interface DeliveryDetail {
-  id: number;
-  order_id: number;
-  delivery_date: string;
-  status: DeliveryStatus;
-  prepared_by: number | null;
-  delivered_by: number | null;
-  pdf_path: string | null;
-  created_at: string;
-  items: DeliveryItem[];
-  order_number: string | null;
-  market_name: string | null;
 }
 
 export interface DashboardSummary {
@@ -164,9 +176,6 @@ export interface OrdersPerMarket {
   total_orders: number;
   pending: number;
   approved: number;
-  prepared: number;
-  on_route: number;
-  delivered: number;
   rejected: number;
 }
 

@@ -1,38 +1,59 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Store, Eye, EyeOff } from "lucide-react";
+import { authApi } from "@/api";
+import { Store, Eye, EyeOff, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { AvailableRole, Profile } from "@/types";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, selectRole } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showForgot, setShowForgot] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotMessage, setForgotMessage] = useState("");
+  const [profilesLoading, setProfilesLoading] = useState(true);
+
+  const [availableRoles, setAvailableRoles] = useState<AvailableRole[]>([]);
+  const [selectedRoleIdx, setSelectedRoleIdx] = useState("");
+  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
+
+  useEffect(() => {
+    authApi.profiles().then((data) => {
+      setProfiles(data);
+    }).catch(() => {
+      setError("Failed to load profiles");
+    }).finally(() => {
+      setProfilesLoading(false);
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    const profile = profiles.find((p) => p.user_id === Number(selectedUserId));
+    if (!profile) {
+      setError("Please select a profile");
+      return;
+    }
     setLoading(true);
     try {
-      const userData = await login(username, password);
-      if (rememberMe) {
-        localStorage.setItem("remembered_user", username);
-      } else {
-        localStorage.removeItem("remembered_user");
+      const result = await login(profile.username, password);
+      if (result.requiresRoleSelection && result.availableRoles.length > 1) {
+        setAvailableRoles(result.availableRoles);
+        setSelectedRoleIdx("0");
+        setNeedsRoleSelection(true);
+        setLoading(false);
+        return;
       }
       const routes: Record<string, string> = { admin: "/admin", market: "/market", warehouse: "/warehouse" };
-      navigate(routes[userData.role] || "/admin", { replace: true });
+      navigate(routes[result.userData.role] || "/admin", { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Invalid credentials");
     } finally {
@@ -40,17 +61,19 @@ export default function LoginPage() {
     }
   };
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConfirmRole = async () => {
+    setError("");
+    const role = availableRoles[Number(selectedRoleIdx)];
+    if (!role) return;
+    setLoading(true);
     try {
-      await fetch("/api/v1/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: forgotEmail }),
-      });
-      setForgotMessage("If the email exists, a reset link has been sent.");
-    } catch {
-      setForgotMessage("If the email exists, a reset link has been sent.");
+      const userData = await selectRole(role.role, role.market_id);
+      const routes: Record<string, string> = { admin: "/admin", market: "/market", warehouse: "/warehouse" };
+      navigate(routes[userData.role] || "/admin", { replace: true });
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -65,93 +88,100 @@ export default function LoginPage() {
           <CardDescription>Sign in to Djaber Distribution</CardDescription>
         </CardHeader>
         <CardContent>
-          {!showForgot ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                  {error}
+          <div className="space-y-4">
+            {error && (
+              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
+            {!needsRoleSelection ? (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Profile</Label>
+                  {profilesLoading ? (
+                    <div className="flex h-10 items-center rounded-md border px-3 text-sm text-muted-foreground">
+                      Loading profiles...
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <select
+                        value={selectedUserId}
+                        onChange={(e) => setSelectedUserId(e.target.value)}
+                        className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                        required
+                      >
+                        <option value="">Choose a profile</option>
+                        {profiles.map((p) => (
+                          <option key={p.user_id} value={p.user_id}>
+                            {p.username} ({p.market_name || p.role})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50 pointer-events-none" />
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your username"
-                  required
-                  autoComplete="username"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    required
-                    autoComplete="current-password"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0 h-full px-3"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      required
+                      autoComplete="current-password"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-gray-300"
-                  />
-                  Remember me
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowForgot(true)}
-                  className="text-sm text-primary hover:underline"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Signing in..." : "Sign In"}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleForgotPassword} className="space-y-4">
-              {forgotMessage && (
-                <div className="rounded-md bg-green-50 p-3 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                  {forgotMessage}
+
+                <Button type="submit" className="w-full" disabled={loading || profilesLoading}>
+                  {loading ? "Signing in..." : "Sign In"}
+                </Button>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground text-center">Choose which profile you want to enter</p>
+
+                <div className="space-y-2">
+                  <Label>Profile</Label>
+                  <div className="relative">
+                    <select
+                      value={selectedRoleIdx}
+                      onChange={(e) => setSelectedRoleIdx(e.target.value)}
+                      className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 appearance-none"
+                    >
+                      {availableRoles.map((r, idx) => (
+                        <option key={idx} value={idx}>
+                          {r.market_name || r.role}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50 pointer-events-none" />
+                  </div>
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  required
-                />
+
+                <Button onClick={handleConfirmRole} className="w-full" disabled={loading}>
+                  {loading ? "Entering..." : "Enter"}
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={() => { setNeedsRoleSelection(false); setAvailableRoles([]); setError(""); }}>
+                  Back to Login
+                </Button>
               </div>
-              <Button type="submit" className="w-full">Send Reset Link</Button>
-              <Button type="button" variant="ghost" className="w-full" onClick={() => { setShowForgot(false); setForgotMessage(""); }}>
-                Back to Login
-              </Button>
-            </form>
-          )}
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -62,7 +62,7 @@ export default function OrdersPage() {
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
-            {["pending", "approved", "prepared", "on_route", "delivered", "rejected"].map((s) => (
+            {["pending", "approved", "rejected"].map((s) => (
               <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace("_", " ")}</SelectItem>
             ))}
           </SelectContent>

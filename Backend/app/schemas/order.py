@@ -42,6 +42,8 @@ class OrderItemDetail(OrderItemRead):
     product_name: str | None = None
     sku: str | None = None
     unit: str | None = None
+    current_stock: int | None = None
+    minimum_stock: int | None = None
 
 
 class OrderRead(BaseModel):
@@ -62,4 +64,3 @@ class OrderDetail(OrderRead):
     market_name: str | None = None
     market_phone: str | None = None
     approved_by_username: str | None = None
-    delivery_id: int | None = None

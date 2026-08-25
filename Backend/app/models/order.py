@@ -32,7 +32,6 @@ class Order(Base):
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by="OrderItem.id"
     )
-    delivery: Mapped["Delivery | None"] = relationship(back_populates="order", uselist=False)
 
     def __repr__(self) -> str:
         return f"<Order {self.order_number} [{self.status.value}]>"

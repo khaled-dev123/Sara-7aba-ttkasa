@@ -19,6 +19,9 @@ def test_full_lifecycle(api, env, tokens):
     assert r.json()["status"] == OrderStatus.pending.value
     assert r.json()["market_phone"] == ""  # market has no phone set
 
+    product_id = env["product_ids"][0]
+    base_stock = api("GET", f"/api/v1/products/{product_id}", token=tokens["admin"]).json()["current_stock"]
+
     # market user cannot approve
     denied = api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["mkt"])
     assert denied.status_code == 403
@@ -28,30 +31,9 @@ def test_full_lifecycle(api, env, tokens):
     assert approved.json()["status"] == OrderStatus.approved.value
     assert approved.json()["approved_by"] == env["admin_id"]
 
-    prepared = api("POST", f"/api/v1/orders/{order_id}/prepare", token=tokens["whse"])
-    assert prepared.status_code == 200, prepared.text
-    delivery_id = prepared.json()["id"]
-    assert prepared.json()["status"] == "prepared"
-    assert prepared.json()["pdf_path"]  # PDF generated
-
-    on_route = api("POST", f"/api/v1/deliveries/{delivery_id}/start", token=tokens["whse"])
-    assert on_route.status_code == 200
-    assert on_route.json()["status"] == "on_route"
-
-    order_on_route = api("GET", f"/api/v1/orders/{order_id}", token=tokens["whse"]).json()
-    assert order_on_route["status"] == OrderStatus.on_route.value
-
-    completed = api("POST", f"/api/v1/deliveries/{delivery_id}/complete", token=tokens["whse"])
-    assert completed.status_code == 200
-    assert completed.json()["status"] == "delivered"
-
-    final = api("GET", f"/api/v1/orders/{order_id}", token=tokens["whse"]).json()
-    assert final["status"] == OrderStatus.delivered.value
-    assert final["delivery_id"] == delivery_id
-
-    pdf = api("GET", f"/api/v1/deliveries/{delivery_id}/pdf", token=tokens["whse"])
-    assert pdf.status_code == 200
-    assert pdf.headers["content-type"] == "application/pdf"
+    # approving deducts stock
+    final_stock = api("GET", f"/api/v1/products/{product_id}", token=tokens["admin"]).json()["current_stock"]
+    assert final_stock == base_stock - 10
 
 
 def test_strict_transitions_reject_skips_states(api, env, tokens):
@@ -65,10 +47,6 @@ def test_strict_transitions_reject_skips_states(api, env, tokens):
     # cannot approve a rejected order
     assert api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"]).status_code == 400
 
-    # cannot prepare a pending order
-    r2 = _create_order(api, tokens["admin"], env["product_ids"], market_id=env["market_b_id"])
-    assert api("POST", f"/api/v1/orders/{r2.json()['id']}/prepare", token=tokens["whse"]).status_code == 400
-
 
 def test_cannot_double_approve(api, env, tokens):
     r = _create_order(api, tokens["admin"], env["product_ids"], market_id=env["market_b_id"])
@@ -77,13 +55,14 @@ def test_cannot_double_approve(api, env, tokens):
     assert api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"]).status_code == 400
 
 
-def test_insufficient_stock_blocks_prepare(api, env, tokens):
+def test_insufficient_stock_blocks_approve(api, env, tokens):
     r = _create_order(api, tokens["admin"], env["product_ids"], market_id=env["market_b_id"], qty=999999)
     order_id = r.json()["id"]
-    api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"])
-    prep = api("POST", f"/api/v1/orders/{order_id}/prepare", token=tokens["whse"])
-    assert prep.status_code == 400
-    assert "Insufficient stock" in prep.json()["detail"]
+    appr = api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"])
+    assert appr.status_code == 400
+    assert "Insufficient stock" in appr.json()["detail"]
+    # order stays pending
+    assert api("GET", f"/api/v1/orders/{order_id}", token=tokens["admin"]).json()["status"] == "pending"
 
 
 def test_market_can_only_see_own_orders(api, env, tokens):
@@ -142,9 +121,33 @@ def test_create_order_rejects_duplicate_products(api, env, tokens):
     assert r.status_code == 422
 
 
-def test_prepare_twice_fails(api, env, tokens):
-    r = _create_order(api, tokens["admin"], env["product_ids"], market_id=env["market_b_id"])
+def test_order_reservation_visible_in_product_sell(api, env, tokens):
+    product_id = env["product_ids"][0]
+
+    def product():
+        return api("GET", f"/api/v1/products/{product_id}", token=tokens["admin"]).json()
+
+    base_total = product()["reserved_stock"]
+    base_stock = product()["current_stock"]
+    base_entries = {(e["market_id"], e["quantity"]) for e in product()["reserved_by_market"]}
+    base_market_b_qty = next((q for mid, q in base_entries if mid == env["market_b_id"]), 0)
+
+    # pending order -> quantity is reserved immediately with per-market breakdown
+    r = _create_order(api, tokens["admin"], env["product_ids"], market_id=env["market_b_id"], qty=7)
     order_id = r.json()["id"]
-    api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"])
-    assert api("POST", f"/api/v1/orders/{order_id}/prepare", token=tokens["whse"]).status_code == 200
-    assert api("POST", f"/api/v1/orders/{order_id}/prepare", token=tokens["whse"]).status_code == 400
+    body = product()
+    assert body["reserved_stock"] == base_total + 7
+    entries = {(e["market_id"], e["quantity"]) for e in body["reserved_by_market"]}
+    assert (env["market_b_id"], base_market_b_qty + 7) in entries
+    assert all(e["market_name"] for e in body["reserved_by_market"])
+    # stock untouched until approval
+    assert body["current_stock"] == base_stock
+
+    # approval converts the reservation into a real stock deduction
+    assert api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"]).status_code == 200
+
+    body = product()
+    assert body["reserved_stock"] == base_total
+    entries_after = {(e["market_id"], e["quantity"]) for e in body["reserved_by_market"]}
+    assert (env["market_b_id"], base_market_b_qty + 7) not in entries_after
+    assert body["current_stock"] == base_stock - 7

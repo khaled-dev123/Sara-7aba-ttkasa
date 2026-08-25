@@ -5,7 +5,6 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Delivery,
     Market,
     Order,
     OrderItem,
@@ -13,7 +12,7 @@ from app.models import (
     StockMovement,
     Supplier,
 )
-from app.models.enums import DeliveryStatus, OrderStatus, StockMovementType
+from app.models.enums import OrderStatus
 from app.repositories.catalog import MarketRepository, ProductRepository
 
 
@@ -37,8 +36,6 @@ class AnalyticsService:
                 [
                     OrderStatus.pending,
                     OrderStatus.approved,
-                    OrderStatus.prepared,
-                    OrderStatus.delivered,
                 ]
             ))
         )
@@ -95,9 +92,6 @@ class AnalyticsService:
                 func.count(Order.id),
                 func.sum(case((Order.status == OrderStatus.pending, 1), else_=0)),
                 func.sum(case((Order.status == OrderStatus.approved, 1), else_=0)),
-                func.sum(case((Order.status == OrderStatus.prepared, 1), else_=0)),
-                func.sum(case((Order.status == OrderStatus.on_route, 1), else_=0)),
-                func.sum(case((Order.status == OrderStatus.delivered, 1), else_=0)),
                 func.sum(case((Order.status == OrderStatus.rejected, 1), else_=0)),
             )
             .join(Order, Order.market_id == Market.id)
@@ -113,12 +107,9 @@ class AnalyticsService:
                 "total_orders": int(total or 0),
                 "pending": int(pending or 0),
                 "approved": int(approved or 0),
-                "prepared": int(prepared or 0),
-                "on_route": int(on_route or 0),
-                "delivered": int(delivered or 0),
                 "rejected": int(rejected or 0),
             }
-            for market_id, market_name, total, pending, approved, prepared, on_route, delivered, rejected in self.db.execute(stmt)
+            for market_id, market_name, total, pending, approved, rejected in self.db.execute(stmt)
         ]
 
     # ----- monthly distribution ------------------------------------------
@@ -131,7 +122,7 @@ class AnalyticsService:
             select(Order.id).where(
                 Order.requested_at >= start,
                 Order.requested_at < end,
-                Order.status.in_([OrderStatus.delivered, OrderStatus.prepared]),
+                Order.status == OrderStatus.approved,
             )
         ).all()
 
@@ -251,10 +242,8 @@ class AnalyticsService:
         pending_orders = self.db.scalar(
             select(func.count(OrderModel.id)).where(OrderModel.status == OrderStatus.pending)
         ) or 0
-        prepared_deliveries = self.db.scalar(
-            select(func.count(Delivery.id)).where(
-                Delivery.status.in_([DeliveryStatus.prepared, DeliveryStatus.on_route])
-            )
+        approved_orders = self.db.scalar(
+            select(func.count(OrderModel.id)).where(OrderModel.status == OrderStatus.approved)
         ) or 0
 
         stock_value = self.db.scalar(
@@ -267,7 +256,7 @@ class AnalyticsService:
             "low_stock_count": int(low_stock_count),
             "total_markets": int(total_markets),
             "pending_orders": int(pending_orders),
-            "prepared_deliveries": int(prepared_deliveries),
+            "approved_orders": int(approved_orders),
             "stock_value": Decimal(str(stock_value)),
             "monthly_revenue": self._monthly_revenue(),
         }
@@ -284,7 +273,7 @@ class AnalyticsService:
             .where(
                 Order.requested_at >= start,
                 Order.requested_at < end,
-                Order.status.in_([OrderStatus.delivered, OrderStatus.prepared]),
+                Order.status == OrderStatus.approved,
             )
         )
         return Decimal(str(value)) if value is not None else Decimal("0")
@@ -389,7 +378,7 @@ class AnalyticsService:
             .where(
                 Order.requested_at >= month_start,
                 Order.requested_at < month_end,
-                Order.status.in_([OrderStatus.delivered, OrderStatus.prepared]),
+                Order.status == OrderStatus.approved,
             )
             .group_by(Market.id, Market.name)
             .order_by(func.sum(OrderItem.quantity).desc())

@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError, ConflictError, NotFoundError, PermissionDeniedError
-from app.models import AuthToken, MarketUser, User
+from app.models import AuthToken, MarketUser, User, UserRoleEntry
 from app.models.enums import AuthTokenPurpose
 from app.repositories.auth_tokens import AuthTokenRepository
-from app.repositories.users import MarketUserRepository, UserRepository
+from app.repositories.users import MarketUserRepository, UserRoleRepository, UserRepository
 from app.schemas.user import UserCreate, UserUpdate
 from app.security import (
     create_access_token,
@@ -30,6 +31,7 @@ class AuthService:
         self.db = db
         self.users = UserRepository(db)
         self.tokens = AuthTokenRepository(db)
+        self.user_roles = UserRoleRepository(db)
 
     def authenticate(self, username: str, password: str) -> User:
         user = self.users.get_by_username(username)
@@ -37,9 +39,30 @@ class AuthService:
             raise PermissionDeniedError("Invalid username or password")
         return user
 
+    def get_available_roles(self, user: User) -> list[dict]:
+        entries = self.user_roles.get_by_user(user.id)
+        result = []
+        for entry in entries:
+            item = {"role": entry.role}
+            if entry.market_id is not None:
+                item["market_id"] = entry.market_id
+                if entry.market:
+                    item["market_name"] = entry.market.name
+            result.append(item)
+        return result
+
     def issue_tokens(self, user: User) -> dict[str, str]:
         access_token = create_access_token(user.id, user.username, user.role.value)
         plain, refresh_record = self._create_token(user, AuthTokenPurpose.refresh, refresh_token_ttl())
+        return {"access_token": access_token, "refresh_token": plain, "token_type": "bearer"}
+
+    def issue_tokens_for_role(self, user: User, role: str, market_id: int | None = None) -> dict[str, str]:
+        entries = self.user_roles.get_by_user(user.id)
+        allowed = {e.role for e in entries}
+        if role not in allowed:
+            raise PermissionDeniedError(f"Role '{role}' is not available for this user")
+        access_token = create_access_token(user.id, user.username, role, market_id=market_id)
+        plain, _ = self._create_token(user, AuthTokenPurpose.refresh, refresh_token_ttl())
         return {"access_token": access_token, "refresh_token": plain, "token_type": "bearer"}
 
     def refresh(self, refresh_token: str) -> dict[str, str]:
@@ -108,6 +131,7 @@ class UserService:
         self.db = db
         self.users = UserRepository(db)
         self.market_users = MarketUserRepository(db)
+        self.user_roles = UserRoleRepository(db)
 
     def create(self, payload: UserCreate, market_id: int | None = None) -> User:
         if self.users.get_by_username(payload.username):
@@ -122,6 +146,12 @@ class UserService:
             role=payload.role,
         )
         self.users.create(user)
+
+        self.user_roles.create(UserRoleEntry(
+            user_id=user.id,
+            role=payload.role.value,
+            market_id=market_id,
+        ))
 
         if market_id is not None:
             self._link_market(user, market_id)
@@ -149,6 +179,20 @@ class UserService:
         if existing:
             self.db.delete(existing)
         self.market_users.create(MarketUser(user_id=user.id, market_id=market_id))
+
+        existing_role = self.db.scalar(
+            select(UserRoleEntry).where(
+                UserRoleEntry.user_id == user.id,
+                UserRoleEntry.role == "market",
+                UserRoleEntry.market_id == market_id,
+            )
+        )
+        if not existing_role:
+            self.user_roles.create(UserRoleEntry(
+                user_id=user.id,
+                role="market",
+                market_id=market_id,
+            ))
 
     def list_with_market(self) -> list[tuple[User, MarketUser | None]]:
         return self.users.list_with_market()

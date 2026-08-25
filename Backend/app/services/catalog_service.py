@@ -1,17 +1,20 @@
 from sqlalchemy.orm import Session
 
 from app.errors import ConflictError, NotFoundError
-from app.models import Category, Market, Product, Supplier
+from app.models import Category, Market, MarketUser, Product, Supplier, User, UserRoleEntry
+from app.models.enums import UserRole
 from app.repositories.catalog import (
     CategoryRepository,
     MarketRepository,
     ProductRepository,
     SupplierRepository,
 )
+from app.repositories.users import MarketUserRepository, UserRoleRepository, UserRepository
 from app.schemas.category import CategoryCreate, CategoryUpdate
 from app.schemas.market import MarketCreate, MarketUpdate
 from app.schemas.product import ProductCreate, ProductUpdate
 from app.schemas.supplier import SupplierCreate, SupplierUpdate
+from app.security import hash_password
 from app.services.audit_service import AuditService
 
 
@@ -19,9 +22,30 @@ class MarketService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = MarketRepository(db)
+        self.users = UserRepository(db)
+        self.market_users = MarketUserRepository(db)
+        self.user_roles = UserRoleRepository(db)
 
     def create(self, payload: MarketCreate) -> Market:
-        return self.repo.create(Market(**payload.model_dump()))
+        market_data = payload.model_dump(exclude={"username", "password"})
+        market = self.repo.create(Market(**market_data))
+
+        email = f"{payload.username}@market.local"
+        user = User(
+            username=payload.username,
+            email=email,
+            password_hash=hash_password(payload.password),
+            role=UserRole.market,
+        )
+        self.users.create(user)
+        self.market_users.create(MarketUser(user_id=user.id, market_id=market.id))
+        self.user_roles.create(UserRoleEntry(
+            user_id=user.id,
+            role=UserRole.market.value,
+            market_id=market.id,
+        ))
+
+        return market
 
     def update(self, market_id: int, payload: MarketUpdate) -> Market:
         market = self.repo.get_or_404(market_id)

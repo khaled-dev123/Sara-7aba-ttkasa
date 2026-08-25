@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { categoryApi, supplierApi, productApi, marketApi, orderApi, deliveryApi, dashboardApi, analyticsApi, auditLogApi, stockApi, purchaseApi } from "@/api";
+import { categoryApi, supplierApi, productApi, marketApi, orderApi, dashboardApi, analyticsApi, auditLogApi, stockApi, purchaseApi } from "@/api";
 
 export function useCategories() {
   return useQuery({ queryKey: ["categories"], queryFn: categoryApi.list });
@@ -31,10 +31,6 @@ export function useOrders(params?: Parameters<typeof orderApi.list>[0]) {
 
 export function useOrder(id: number) {
   return useQuery({ queryKey: ["order", id], queryFn: () => orderApi.get(id), enabled: !!id });
-}
-
-export function useDeliveries(params?: Parameters<typeof deliveryApi.list>[0]) {
-  return useQuery({ queryKey: ["deliveries", params], queryFn: () => deliveryApi.list(params) });
 }
 
 export function useDashboardSummary() {
@@ -161,6 +157,26 @@ export function useDeleteMarket() {
   });
 }
 
+export function useMarketUsers(marketId: number) {
+  return useQuery({ queryKey: ["market-users", marketId], queryFn: () => marketApi.listUsers(marketId), enabled: !!marketId });
+}
+
+export function useAssignMarketUser(marketId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: number) => marketApi.assignUser(marketId, userId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["market-users", marketId] }); qc.invalidateQueries({ queryKey: ["profiles"] }); },
+  });
+}
+
+export function useRemoveMarketUser(marketId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: number) => marketApi.removeUser(marketId, userId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["market-users", marketId] }); qc.invalidateQueries({ queryKey: ["profiles"] }); },
+  });
+}
+
 export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -173,7 +189,12 @@ export function useApproveOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: orderApi.approve,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["orders"] }); qc.invalidateQueries({ queryKey: ["deliveries"] }); qc.invalidateQueries({ queryKey: ["dashboard-summary"] }); },
+    onSuccess: (_data, orderId) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["order", orderId] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
   });
 }
 
@@ -185,34 +206,18 @@ export function useRejectOrder() {
   });
 }
 
-export function usePrepareOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: orderApi.prepare,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["orders"] }); qc.invalidateQueries({ queryKey: ["deliveries"] }); },
-  });
-}
-
-export function useStartDelivery() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deliveryApi.start,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["deliveries"] }),
-  });
-}
-
-export function useCompleteDelivery() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deliveryApi.complete,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["deliveries"] }); qc.invalidateQueries({ queryKey: ["dashboard-summary"] }); },
-  });
-}
-
 export function useStockAdjust() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: stockApi.adjust,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["products"] }); qc.invalidateQueries({ queryKey: ["stock-movements"] }); },
+  });
+}
+
+export function useStockReturn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: stockApi.return,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["products"] }); qc.invalidateQueries({ queryKey: ["stock-movements"] }); },
   });
 }

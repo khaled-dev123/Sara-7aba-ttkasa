@@ -3,9 +3,9 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
-  LayoutDashboard, Package, Tags, Truck, Store, ShoppingCart,
-  ClipboardList, BarChart3, Shield, Menu, X, Sun, Moon,
-  LogOut, ChevronDown, Bell, Warehouse, FileText, Settings
+  LayoutDashboard, Package, Tags, Truck, Store, ShoppingCart, ShoppingBag,
+  ClipboardList, Shield, Menu, X, Sun, Moon,
+  LogOut, ChevronDown, Bell, Warehouse, FileText, Settings, Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -25,23 +25,21 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: <LayoutDashboard className="h-4 w-4" />, roles: ["admin"] },
-  { label: "Products", href: "/admin/products", icon: <Package className="h-4 w-4" />, roles: ["admin"] },
+  { label: "Products (Buy)", href: "/admin/products/buy", icon: <ShoppingBag className="h-4 w-4" />, roles: ["admin"] },
+  { label: "Products (Sell)", href: "/admin/products/sell", icon: <Package className="h-4 w-4" />, roles: ["admin"] },
+  { label: "Products (Stock)", href: "/admin/products/stock", icon: <Layers className="h-4 w-4" />, roles: ["admin"] },
   { label: "Categories", href: "/admin/categories", icon: <Tags className="h-4 w-4" />, roles: ["admin"] },
   { label: "Suppliers", href: "/admin/suppliers", icon: <Truck className="h-4 w-4" />, roles: ["admin"] },
   { label: "Markets", href: "/admin/markets", icon: <Store className="h-4 w-4" />, roles: ["admin"] },
   { label: "Orders", href: "/admin/orders", icon: <ShoppingCart className="h-4 w-4" />, roles: ["admin"] },
-  { label: "Deliveries", href: "/admin/deliveries", icon: <ClipboardList className="h-4 w-4" />, roles: ["admin"] },
-  { label: "Analytics", href: "/admin/analytics", icon: <BarChart3 className="h-4 w-4" />, roles: ["admin"] },
   { label: "Audit Logs", href: "/admin/audit-logs", icon: <Shield className="h-4 w-4" />, roles: ["admin"] },
   { label: "Reports", href: "/admin/reports", icon: <FileText className="h-4 w-4" />, roles: ["admin"] },
   { label: "Settings", href: "/admin/settings", icon: <Settings className="h-4 w-4" />, roles: ["admin"] },
   { label: "Dashboard", href: "/market", icon: <LayoutDashboard className="h-4 w-4" />, roles: ["market"] },
-  { label: "Products", href: "/market/products", icon: <Package className="h-4 w-4" />, roles: ["market"] },
-  { label: "Place Order", href: "/market/cart", icon: <ShoppingCart className="h-4 w-4" />, roles: ["market"] },
   { label: "My Orders", href: "/market/orders", icon: <ClipboardList className="h-4 w-4" />, roles: ["market"] },
+  { label: "New Order", href: "/market/products", icon: <ShoppingCart className="h-4 w-4" />, roles: ["market"] },
   { label: "Dashboard", href: "/warehouse", icon: <Warehouse className="h-4 w-4" />, roles: ["warehouse"] },
   { label: "Orders", href: "/warehouse/orders", icon: <ClipboardList className="h-4 w-4" />, roles: ["warehouse"] },
-  { label: "Deliveries", href: "/warehouse/deliveries", icon: <Truck className="h-4 w-4" />, roles: ["warehouse"] },
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {

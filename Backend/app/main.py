@@ -12,7 +12,6 @@ from app.api.v1 import (
     auth,
     categories,
     dashboard,
-    deliveries,
     markets,
     orders,
     products,
@@ -32,7 +31,7 @@ from app.errors import AppError
 app = FastAPI(
     title=f"{COMPANY_NAME} API",
     description="Wholesale stock distribution to markets: daily ordering, stock tracking, "
-    "strict order lifecycle, delivery PDFs, audit logging and analytics.",
+    "order approval workflow, audit logging and analytics.",
     version="2.0.0",
     contact={"name": COMPANY_NAME},
     license_info={"name": "Proprietary"},
@@ -91,7 +90,6 @@ api.include_router(categories.router)
 api.include_router(suppliers.router)
 api.include_router(products.router)
 api.include_router(orders.router)
-api.include_router(deliveries.router)
 api.include_router(purchases.router)
 api.include_router(stock.router)
 api.include_router(analytics.router)

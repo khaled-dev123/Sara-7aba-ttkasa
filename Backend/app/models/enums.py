@@ -10,16 +10,7 @@ class UserRole(str, enum.Enum):
 class OrderStatus(str, enum.Enum):
     pending = "pending"
     approved = "approved"
-    prepared = "prepared"
-    on_route = "on_route"
-    delivered = "delivered"
     rejected = "rejected"
-
-
-class DeliveryStatus(str, enum.Enum):
-    prepared = "prepared"
-    on_route = "on_route"
-    delivered = "delivered"
 
 
 class AuthTokenPurpose(str, enum.Enum):

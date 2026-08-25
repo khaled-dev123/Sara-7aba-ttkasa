@@ -10,7 +10,6 @@ from app.schemas.analytics import (
 )
 from app.schemas.auth import LoginRequest, PasswordChange, Token
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
-from app.schemas.delivery import DeliveryDetail, DeliveryItemRead, DeliveryRead
 from app.schemas.market import MarketCreate, MarketRead, MarketUpdate
 from app.schemas.order import (
     OrderCreate,
@@ -56,9 +55,6 @@ __all__ = [
     "CategoryCreate",
     "CategoryRead",
     "CategoryUpdate",
-    "DeliveryDetail",
-    "DeliveryItemRead",
-    "DeliveryRead",
     "MarketCreate",
     "MarketRead",
     "MarketUpdate",

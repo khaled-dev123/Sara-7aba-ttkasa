@@ -7,6 +7,7 @@ from app.models import User
 from app.models.enums import UserRole
 from app.schemas.market import MarketCreate, MarketRead, MarketUpdate
 from app.services.catalog_service import MarketService
+from app.services.user_service import UserService
 
 router = APIRouter(prefix="/markets", tags=["markets"])
 
@@ -57,3 +58,55 @@ def delete_market(
     _: User = admin_only,
 ):
     MarketService(db).repo.delete(market_id)
+
+
+@router.get("/{market_id}/users")
+def list_market_users(
+    market_id: int,
+    db: Session = Depends(get_db),
+    _: User = admin_only,
+):
+    MarketService(db).repo.get_or_404(market_id)
+    from sqlalchemy import select
+    from app.models import MarketUser, UserRoleEntry
+
+    stmt = (
+        select(User.id, User.username, User.email)
+        .join(UserRoleEntry, UserRoleEntry.user_id == User.id)
+        .where(UserRoleEntry.market_id == market_id, UserRoleEntry.role == "market")
+        .order_by(User.username)
+    )
+    rows = db.execute(stmt).all()
+    return [{"user_id": r.id, "username": r.username, "email": r.email} for r in rows]
+
+
+@router.post("/{market_id}/users")
+def assign_market_user(
+    market_id: int,
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+    _: User = admin_only,
+):
+    MarketService(db).repo.get_or_404(market_id)
+    UserService(db).link_market(user_id, market_id)
+    return {"ok": True}
+
+
+@router.delete("/{market_id}/users/{user_id}")
+def remove_market_user(
+    market_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = admin_only,
+):
+    from sqlalchemy import select
+    from app.models import MarketUser, UserRoleEntry
+
+    mu = db.scalar(select(MarketUser).where(MarketUser.user_id == user_id, MarketUser.market_id == market_id))
+    if mu:
+        db.delete(mu)
+    ur = db.scalar(select(UserRoleEntry).where(UserRoleEntry.user_id == user_id, UserRoleEntry.market_id == market_id, UserRoleEntry.role == "market"))
+    if ur:
+        db.delete(ur)
+    db.commit()
+    return {"ok": True}

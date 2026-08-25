@@ -21,9 +21,8 @@ RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "1") == "1"
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", 300))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", 60))
 
-# Company / PDF
+# Company / assets
 COMPANY_NAME = os.getenv("COMPANY_NAME", "Djaber Distribution")
 COMPANY_TAGLINE = os.getenv("COMPANY_TAGLINE", "Wholesale Stock Distribution")
-PDF_STORAGE_DIR = BASE_DIR / "deliveries"
 ASSETS_DIR = BASE_DIR / "assets"
 LOGO_PATH = os.getenv("LOGO_PATH", str(ASSETS_DIR / "logo.png"))

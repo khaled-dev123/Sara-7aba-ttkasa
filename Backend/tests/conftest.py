@@ -22,7 +22,10 @@ from app.services.user_service import AuthService, UserService
 
 @pytest.fixture(scope="session", autouse=True)
 def _fresh_db():
-    Base.metadata.drop_all(bind=engine)
+    engine.dispose()
+    db_path = engine.url.database
+    if db_path and os.path.exists(db_path):
+        os.remove(db_path)
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -54,8 +57,12 @@ def env(_fresh_db):
         UserCreate(username="whse", email="wh@test.io", password="wh123456", role=UserRole.warehouse)
     )
     warehouse_id = warehouse.id
-    market_a = MarketService(session).create(MarketCreate(name="Market A", address="Addr A"))
-    market_b = MarketService(session).create(MarketCreate(name="Market B", address="Addr B"))
+    market_a = MarketService(session).create(
+        MarketCreate(name="Market A", address="Addr A", username="marketa", password="market123")
+    )
+    market_b = MarketService(session).create(
+        MarketCreate(name="Market B", address="Addr B", username="marketb", password="market123")
+    )
     market_a_id, market_b_id = market_a.id, market_b.id
     mkt_user = UserService(session).create(
         UserCreate(username="mkt", email="mkt@test.io", password="mkt123456", role=UserRole.market),

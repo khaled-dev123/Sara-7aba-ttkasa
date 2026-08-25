@@ -43,15 +43,6 @@ class AuditService:
     def log_order_created(self, order_id: int, user_id: int, **details) -> None:
         self.log("order.created", "order", order_id, user_id, details)
 
-    def log_order_prepared(self, order_id: int, delivery_id: int, user_id: int) -> None:
-        self.log(
-            "order.prepared",
-            "order",
-            order_id,
-            user_id,
-            {"delivery_id": delivery_id},
-        )
-
     def log_stock_adjustment(self, movement_id: int, product_id: int, user_id: int, **details) -> None:
         self.log("stock.adjusted", "product", product_id, user_id, {"movement_id": movement_id, **details})
 

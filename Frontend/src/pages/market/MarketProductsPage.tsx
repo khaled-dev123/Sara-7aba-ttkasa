@@ -82,8 +82,8 @@ export default function MarketProductsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Products"
-        description="Browse available products"
+        title="New Order"
+        description="Order from available products"
         actions={
           <Button onClick={() => setCartOpen(true)} className="relative">
             <ShoppingCart className="mr-2 h-4 w-4" />

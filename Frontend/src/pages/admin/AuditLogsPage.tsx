@@ -28,7 +28,7 @@ export default function AuditLogsPage() {
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Actions" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Actions</SelectItem>
-            {["create", "update", "delete", "login", "approve", "reject", "prepare", "deliver"].map((a) => (
+            {["create", "update", "delete", "login", "approve", "reject"].map((a) => (
               <SelectItem key={a} value={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</SelectItem>
             ))}
           </SelectContent>
@@ -37,7 +37,7 @@ export default function AuditLogsPage() {
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Entities" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Entities</SelectItem>
-            {["user", "product", "category", "supplier", "market", "order", "delivery", "stock", "auth"].map((e) => (
+            {["user", "product", "category", "supplier", "market", "order", "stock", "auth"].map((e) => (
               <SelectItem key={e} value={e}>{e.charAt(0).toUpperCase() + e.slice(1)}</SelectItem>
             ))}
           </SelectContent>

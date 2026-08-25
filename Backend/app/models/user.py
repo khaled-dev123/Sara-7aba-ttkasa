@@ -18,6 +18,9 @@ class User(TimestampMixin, Base):
     market_user: Mapped["MarketUser | None"] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
+    user_roles: Mapped[list["UserRoleEntry"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.username} ({self.role.value})>"

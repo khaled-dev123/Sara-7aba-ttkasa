@@ -1,19 +1,31 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useMarket, useOrders } from "@/hooks";
-import { PageHeader, PageSkeleton, StatusBadge } from "@/components/shared";
+import { useMarket, useOrders, useMarketUsers, useAssignMarketUser, useRemoveMarketUser } from "@/hooks";
+import { PageHeader, PageSkeleton, StatusBadge, useToast } from "@/components/shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { ArrowLeft, UserPlus, Trash2, Users } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { authApi } from "@/api";
+import type { Profile } from "@/types";
 
 export default function MarketDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const marketId = Number(id);
   const { data: market, isLoading } = useMarket(marketId);
   const { data: ordersData } = useOrders({ market_id: marketId, page_size: 50 });
+  const { data: marketUsers } = useMarketUsers(marketId);
+  const assignMutation = useAssignMarketUser(marketId);
+  const removeMutation = useRemoveMarketUser(marketId);
+  const { addToast } = useToast();
+
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
 
   if (isLoading) return <PageSkeleton />;
   if (!market) return <div className="p-8 text-center text-muted-foreground">Market not found</div>;
@@ -27,6 +39,40 @@ export default function MarketDetailsPage() {
     name: status.charAt(0).toUpperCase() + status.slice(1).replace("_", " "),
     count,
   }));
+
+  const assignedUserIds = new Set(marketUsers?.map((u) => u.user_id) || []);
+  const assignableProfiles = allProfiles.filter((p) => p.role === "market" && !assignedUserIds.has(p.user_id));
+
+  const openAssign = async () => {
+    setProfilesLoading(true);
+    setAssignDialogOpen(true);
+    try {
+      const profiles = await authApi.profiles();
+      setAllProfiles(profiles);
+    } catch {
+      addToast({ title: "Failed to load users", variant: "destructive" });
+    } finally {
+      setProfilesLoading(false);
+    }
+  };
+
+  const handleAssign = async (userId: number) => {
+    try {
+      await assignMutation.mutateAsync(userId);
+      addToast({ title: "User assigned to market" });
+    } catch (err: any) {
+      addToast({ title: "Error", description: err?.response?.data?.detail || "Failed", variant: "destructive" });
+    }
+  };
+
+  const handleRemove = async (userId: number) => {
+    try {
+      await removeMutation.mutateAsync(userId);
+      addToast({ title: "User removed from market" });
+    } catch (err: any) {
+      addToast({ title: "Error", description: err?.response?.data?.detail || "Failed", variant: "destructive" });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -49,7 +95,7 @@ export default function MarketDetailsPage() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Status</CardTitle></CardHeader>
           <CardContent>
-            <StatusBadge status={market.is_active ? "delivered" : "rejected"} />
+            <StatusBadge status={market.is_active ? "active" : "inactive"} />
           </CardContent>
         </Card>
       </div>
@@ -59,6 +105,7 @@ export default function MarketDetailsPage() {
           <TabsTrigger value="info">Information</TabsTrigger>
           <TabsTrigger value="orders">Order History</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="users">Users</TabsTrigger>
         </TabsList>
 
         <TabsContent value="info">
@@ -133,7 +180,87 @@ export default function MarketDetailsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="users">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Assigned Users ({marketUsers?.length || 0})
+              </CardTitle>
+              <Button size="sm" onClick={openAssign}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Assign User
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {!marketUsers || marketUsers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No users assigned to this market</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Username</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {marketUsers.map((u) => (
+                      <TableRow key={u.user_id}>
+                        <TableCell className="font-medium">{u.username}</TableCell>
+                        <TableCell>{u.email}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-600 hover:text-red-600"
+                            onClick={() => handleRemove(u.user_id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign User to {market.name}</DialogTitle>
+            <DialogDescription>Select a market user to assign to this market</DialogDescription>
+          </DialogHeader>
+          {profilesLoading ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Loading users...</p>
+          ) : assignableProfiles.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No available users to assign</p>
+          ) : (
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {assignableProfiles.map((p) => (
+                <button
+                  key={p.user_id}
+                  onClick={() => { handleAssign(p.user_id); setAssignDialogOpen(false); }}
+                  className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent"
+                >
+                  <div className="flex-1">
+                    <p className="font-medium">{p.username}</p>
+                    <p className="text-xs text-muted-foreground">{p.market_name ? `Currently: ${p.market_name}` : p.role}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

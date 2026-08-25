@@ -21,7 +21,7 @@ export default function ProductDetailsPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link to="/admin/products"><ArrowLeft className="h-4 w-4" /></Link>
+          <Link to="/admin/products/buy"><ArrowLeft className="h-4 w-4" /></Link>
         </Button>
         <PageHeader title={product.name} description={`SKU: ${product.sku}`} />
       </div>
@@ -47,6 +47,10 @@ export default function ProductDetailsPage() {
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Purchase Price</CardTitle></CardHeader>
           <CardContent><p className="text-lg font-semibold">{formatCurrency(product.purchase_price)}</p></CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Supplier Price</CardTitle></CardHeader>
+          <CardContent><p className="text-lg font-semibold">{formatCurrency(product.supplier_price)}</p></CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="info">
@@ -63,9 +67,10 @@ export default function ProductDetailsPage() {
                 <div><dt className="text-sm text-muted-foreground">Name</dt><dd className="font-medium">{product.name}</dd></div>
                 <div><dt className="text-sm text-muted-foreground">SKU</dt><dd className="font-mono">{product.sku}</dd></div>
                 <div><dt className="text-sm text-muted-foreground">Unit</dt><dd className="font-medium">{product.unit}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Status</dt><dd><StatusBadge status={product.is_active ? "delivered" : "rejected"} /></dd></div>
+                <div><dt className="text-sm text-muted-foreground">Status</dt><dd><StatusBadge status={product.is_active ? "active" : "inactive"} /></dd></div>
                 <div><dt className="text-sm text-muted-foreground">Minimum Stock</dt><dd className="font-medium">{product.minimum_stock}</dd></div>
                 <div><dt className="text-sm text-muted-foreground">Purchase Price</dt><dd className="font-medium">{formatCurrency(product.purchase_price)}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">Supplier Price</dt><dd className="font-medium">{formatCurrency(product.supplier_price)}</dd></div>
                 <div><dt className="text-sm text-muted-foreground">Created</dt><dd className="font-medium">{formatDateTime(product.created_at)}</dd></div>
                 <div><dt className="text-sm text-muted-foreground">Updated</dt><dd className="font-medium">{formatDateTime(product.updated_at)}</dd></div>
               </dl>

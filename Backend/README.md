@@ -2,7 +2,7 @@
 
 Wholesale stock distribution to markets. FastAPI + SQLAlchemy 2.0 + Alembic on SQLite.
 
-Scope is intentionally narrow: **daily ordering, stock tracking, delivery PDFs, market management, monthly analytics**. No ERP/accounting/CRM.
+Scope is intentionally narrow: **daily ordering, stock tracking, market management, monthly analytics**. No ERP/accounting/CRM.
 
 ## Business workflow
 
@@ -11,10 +11,8 @@ Supplier
   -> Admin buys products (PurchaseOrder, status draft -> received)
   -> Products enter stock (StockMovement purchase, current_stock += qty)
   -> Markets create daily orders (status pending)
-  -> Admin approves / rejects (status approved/rejected)
-  -> Warehouse prepares (status prepared, Delivery created, stock decremented,
-     Delivery PDF generated, StockMovement delivery)
-  -> Delivery on_route -> delivered (order becomes delivered)
+  -> Admin approves / rejects (status approved/rejected;
+     approval validates stock, decrements it and writes StockMovement delivery)
   -> Monthly analytics computed from the same tables
 ```
 
@@ -59,17 +57,15 @@ API docs: http://127.0.0.1:8000/docs
 |-----------|--------------------------------------------------------------------------|
 | `admin`   | Everything: users, markets, catalog, purchases (buy/receive), approve/reject orders, analytics |
 | `market`  | Create/view **own market's** orders only                                 |
-| `warehouse` | Prepare orders, start/complete deliveries, download PDFs, stock adjustments/returns, analytics |
+| `warehouse` | Stock adjustments/returns, analytics                                   |
 
-## Order / Delivery lifecycle
+## Order lifecycle
 
 - Strict, validated transitions (invalid moves are rejected with 400):
-  `pending -> approved -> prepared -> on_route -> delivered`  (or `pending -> rejected`)
-- `approve` / `reject` (admin), `prepare` (warehouse) validates stock, creates the
-  `Delivery` + `DeliveryItems`, writes `StockMovement(delivery, -qty)`, and generates
-  the delivery PDF (logo + QR + employee + signatures, saved under `deliveries/`).
-- `start_delivery` moves both order and delivery `prepared -> on_route`; `complete_delivery`
-  moves both to `delivered`. The order's status is always kept in sync with its delivery.
+  `pending -> approved` or `pending -> rejected`. Approved/rejected are terminal.
+- `approve` (admin) validates stock availability, deducts the ordered quantities and
+  writes `StockMovement(delivery, -qty)`.
+- `reject` (admin) records an optional reason in the order notes.
 
 ## Stock movements — single source of truth
 
@@ -80,7 +76,7 @@ Quantities are **signed** (purchase/return = `+`, delivery/removal = `-`).
 | Type        | Direction | Reference               |
 |-------------|-----------|-------------------------|
 | `purchase`  | + stock   | `purchase_order`        |
-| `delivery`  | - stock   | `delivery`              |
+| `delivery`  | - stock   | `delivery` (order approval) |
 | `adjustment`| +/- stock | `adjustment`            |
 | `return`    | + stock   | `return`                |
 
@@ -89,8 +85,7 @@ Quantities are **signed** (purchase/return = `+`, delivery/removal = `-`).
 - `POST /auth/login` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me`
 - `POST /auth/change-password` · `POST /auth/forgot-password` · `POST /auth/reset-password`
 - `CRUD /users`, `/markets`, `/categories`, `/suppliers`, `/products` (products support `search`, `sort_by`/`sort_dir`, pagination)
-- `POST /orders` · `GET /orders` (filters: `status`, `market_id`, `from_date`, `to_date` + pagination) · `POST /orders/{id}/approve|reject|prepare`
-- `GET /deliveries` (filters: `status`, `market_id`) · `POST /deliveries/{id}/start|complete` · `GET /deliveries/{id}/pdf`
+- `POST /orders` · `GET /orders` (filters: `status`, `market_id`, `from_date`, `to_date` + pagination) · `POST /orders/{id}/approve|reject`
 - `POST /purchases` · `POST /purchases/{id}/receive`
 - `GET /stock/movements` · `POST /stock/adjustments` · `POST /stock/returns`
 - `GET /analytics/{most-requested-products,low-stock,orders-per-market,monthly-distribution,stock-movement-history,stock-summary,dashboard,products,markets}`
@@ -110,7 +105,7 @@ First user: `POST /users` with no token creates the initial `admin` (bootstrap).
 ## Audit logging
 
 `audit_logs` records who did what and when for the sensitive actions:
-`order.created/approved/rejected/prepared/on_route/delivered`, `product.created/updated`,
+`order.created/approved/rejected`, `product.created/updated`,
 `stock.adjusted`, `stock.returned`. Admin-only via `GET /audit-logs`.
 
 ## Tests
@@ -127,4 +122,4 @@ Environment variables: `DATABASE_URL` (default `sqlite:///distributor.db`),
 `SECRET_KEY` (override in production), `ACCESS_TOKEN_EXPIRE_MINUTES` (60),
 `REFRESH_TOKEN_EXPIRE_DAYS` (14), `PASSWORD_RESET_TOKEN_EXPIRE_HOURS` (2),
 `RATE_LIMIT_ENABLED`/`RATE_LIMIT_REQUESTS`/`RATE_LIMIT_WINDOW_SECONDS`,
-`COMPANY_NAME`/`COMPANY_TAGLINE`/`LOGO_PATH` (delivery PDF header).
+`COMPANY_NAME`/`COMPANY_TAGLINE`/`LOGO_PATH`.

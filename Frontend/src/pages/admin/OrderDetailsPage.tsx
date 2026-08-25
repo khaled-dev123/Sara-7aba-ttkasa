@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router-dom";
-import { useOrder, useApproveOrder, useRejectOrder, usePrepareOrder, useStartDelivery } from "@/hooks";
+import { useOrder, useApproveOrder, useRejectOrder } from "@/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader, PageSkeleton, StatusBadge } from "@/components/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Timeline } from "@/components/ui/timeline";
-import { ArrowLeft, Check, X, Package, Truck } from "lucide-react";
+import { ArrowLeft, Check, X, Package, AlertTriangle, Store, TrendingDown } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 import { useState } from "react";
 
@@ -19,8 +19,6 @@ export default function OrderDetailsPage() {
   const { user } = useAuth();
   const approveMutation = useApproveOrder();
   const rejectMutation = useRejectOrder();
-  const prepareMutation = usePrepareOrder();
-  const startDeliveryMutation = useStartDelivery();
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
 
@@ -29,10 +27,14 @@ export default function OrderDetailsPage() {
 
   const timelineSteps = [
     { label: "Order Placed", status: "completed" as const, timestamp: formatDateTime(order.requested_at) },
-    { label: "Approved", status: order.approved_at ? "completed" as const : order.status === "rejected" ? "error" as const : "pending" as const, timestamp: order.approved_at ? formatDateTime(order.approved_at) : undefined, description: order.approved_by_username ? `by ${order.approved_by_username}` : undefined },
-    { label: "Prepared", status: ["prepared", "on_route", "delivered"].includes(order.status) ? "completed" as const : order.status === "pending" ? "pending" as const : "pending" as const },
-    { label: "On Route", status: ["on_route", "delivered"].includes(order.status) ? "completed" as const : "pending" as const },
-    { label: "Delivered", status: order.status === "delivered" ? "completed" as const : "pending" as const },
+    order.status === "rejected"
+      ? { label: "Rejected", status: "error" as const }
+      : {
+          label: "Approved",
+          status: (order.approved_at ? "completed" : "pending") as "completed" | "pending",
+          timestamp: order.approved_at ? formatDateTime(order.approved_at) : undefined,
+          description: order.approved_by_username ? `by ${order.approved_by_username}` : undefined,
+        },
   ];
 
   const handleApprove = async () => {
@@ -45,13 +47,7 @@ export default function OrderDetailsPage() {
     setRejectReason("");
   };
 
-  const handlePrepare = async () => {
-    await prepareMutation.mutateAsync(orderId);
-  };
-
-  const handleStartDelivery = async () => {
-    await startDeliveryMutation.mutateAsync(orderId);
-  };
+  const isApproved = order.status === "approved";
 
   return (
     <div className="space-y-6">
@@ -70,31 +66,126 @@ export default function OrderDetailsPage() {
 
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6">
+          {/* ── Ordered Products Table ── */}
           <Card>
-            <CardHeader><CardTitle>Ordered Products</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
+                Ordered Products
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
                     <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead className="text-right">Qty Ordered</TableHead>
                     <TableHead>Unit</TableHead>
+                    {isApproved && (
+                      <TableHead className="text-right">Stock Remaining</TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {order.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.product_name || `Product #${item.product_id}`}</TableCell>
-                      <TableCell className="font-mono text-sm">{item.sku || "-"}</TableCell>
-                      <TableCell className="text-right font-medium">{item.quantity}</TableCell>
-                      <TableCell>{item.unit || "-"}</TableCell>
-                    </TableRow>
-                  ))}
+                  {order.items.map((item) => {
+                    const isLow =
+                      isApproved &&
+                      item.current_stock !== null &&
+                      item.minimum_stock !== null &&
+                      item.current_stock <= item.minimum_stock;
+
+                    return (
+                      <TableRow key={item.id} className={isLow ? "bg-destructive/5" : undefined}>
+                        <TableCell className="font-medium">
+                          {item.product_name || `Product #${item.product_id}`}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{item.sku || "-"}</TableCell>
+                        <TableCell className="text-right font-medium">{item.quantity}</TableCell>
+                        <TableCell>{item.unit || "-"}</TableCell>
+                        {isApproved && (
+                          <TableCell className="text-right">
+                            <span
+                              className={`inline-flex items-center gap-1 font-semibold ${
+                                isLow ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
+                              }`}
+                            >
+                              {isLow && <AlertTriangle className="h-3.5 w-3.5" />}
+                              {item.current_stock ?? "—"}
+                              {item.unit ? ` ${item.unit}` : ""}
+                            </span>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
+
+          {/* ── Post-Approval Stock Summary Card ── */}
+          {isApproved && (
+            <Card className="border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                  <TrendingDown className="h-5 w-5" />
+                  Stock Levels After Approval
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {order.items.map((item) => {
+                    const isLow =
+                      item.current_stock !== null &&
+                      item.minimum_stock !== null &&
+                      item.current_stock <= item.minimum_stock;
+
+                    const pct =
+                      item.minimum_stock && item.minimum_stock > 0
+                        ? Math.min(100, Math.round(((item.current_stock ?? 0) / (item.minimum_stock * 3)) * 100))
+                        : 100;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`rounded-lg border p-3 space-y-2 ${
+                          isLow
+                            ? "border-destructive/40 bg-destructive/5"
+                            : "border-border bg-background"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium truncate">
+                            {item.product_name || `Product #${item.product_id}`}
+                          </span>
+                          {isLow && (
+                            <span className="flex items-center gap-1 text-xs text-destructive font-semibold shrink-0 ml-2">
+                              <AlertTriangle className="h-3 w-3" /> Low Stock
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Delivered: <strong className="text-foreground">{item.quantity}</strong></span>
+                          <span>Remaining: <strong className={isLow ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}>{item.current_stock ?? "—"}</strong></span>
+                          <span>Min: <strong className="text-foreground">{item.minimum_stock ?? "—"}</strong></span>
+                        </div>
+                        {/* Stock bar */}
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              isLow ? "bg-destructive" : "bg-emerald-500"
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {order.notes && (
             <Card>
@@ -112,14 +203,54 @@ export default function OrderDetailsPage() {
             </CardContent>
           </Card>
 
+          {/* ── Market Info ── */}
           <Card>
-            <CardHeader><CardTitle>Market Information</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-primary" />
+                Market Information
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <dl className="space-y-2 text-sm">
-                <div className="flex justify-between"><dt className="text-muted-foreground">Market</dt><dd className="font-medium">{order.market_name || "-"}</dd></div>
-                <div className="flex justify-between"><dt className="text-muted-foreground">Phone</dt><dd className="font-medium">{order.market_phone || "-"}</dd></div>
-                <div className="flex justify-between"><dt className="text-muted-foreground">Delivery ID</dt><dd className="font-medium">{order.delivery_id || "-"}</dd></div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Market</dt>
+                  <dd className="font-medium">{order.market_name || "-"}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Phone</dt>
+                  <dd className="font-medium">{order.market_phone || "-"}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Total Items</dt>
+                  <dd className="font-medium">{order.items.length}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Total Qty</dt>
+                  <dd className="font-medium">
+                    {order.items.reduce((sum, i) => sum + i.quantity, 0)}
+                  </dd>
+                </div>
               </dl>
+
+              {/* Per-product summary for market */}
+              {order.items.length > 0 && (
+                <div className="mt-4 pt-4 border-t space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    What {order.market_name || "Market"} ordered
+                  </p>
+                  {order.items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground truncate max-w-[140px]">
+                        {item.product_name || `Product #${item.product_id}`}
+                      </span>
+                      <span className="font-semibold shrink-0 ml-2">
+                        {item.quantity} {item.unit || ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -127,7 +258,11 @@ export default function OrderDetailsPage() {
             <Card>
               <CardHeader><CardTitle>Admin Actions</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full" onClick={handleApprove} disabled={approveMutation.isPending}>
+                <Button
+                  className="w-full"
+                  onClick={handleApprove}
+                  disabled={approveMutation.isPending}
+                >
                   <Check className="mr-2 h-4 w-4" /> Approve Order
                 </Button>
                 {!showReject ? (
@@ -137,37 +272,26 @@ export default function OrderDetailsPage() {
                 ) : (
                   <div className="space-y-2">
                     <Label>Reason</Label>
-                    <Input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason for rejection" />
+                    <Input
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      placeholder="Reason for rejection"
+                    />
                     <div className="flex gap-2">
-                      <Button variant="destructive" className="flex-1" onClick={handleReject} disabled={rejectMutation.isPending}>
+                      <Button
+                        variant="destructive"
+                        className="flex-1"
+                        onClick={handleReject}
+                        disabled={rejectMutation.isPending}
+                      >
                         Confirm Reject
                       </Button>
-                      <Button variant="outline" className="flex-1" onClick={() => setShowReject(false)}>Cancel</Button>
+                      <Button variant="outline" className="flex-1" onClick={() => setShowReject(false)}>
+                        Cancel
+                      </Button>
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
-
-          {user?.role === "warehouse" && order.status === "approved" && (
-            <Card>
-              <CardHeader><CardTitle>Warehouse Actions</CardTitle></CardHeader>
-              <CardContent>
-                <Button className="w-full" onClick={handlePrepare} disabled={prepareMutation.isPending}>
-                  <Package className="mr-2 h-4 w-4" /> Mark as Prepared
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {user?.role === "warehouse" && order.status === "prepared" && (
-            <Card>
-              <CardHeader><CardTitle>Delivery Actions</CardTitle></CardHeader>
-              <CardContent>
-                <Button className="w-full" onClick={handleStartDelivery} disabled={startDeliveryMutation.isPending}>
-                  <Truck className="mr-2 h-4 w-4" /> Start Delivery
-                </Button>
               </CardContent>
             </Card>
           )}

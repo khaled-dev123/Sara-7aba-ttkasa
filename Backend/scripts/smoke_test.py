@@ -38,7 +38,10 @@ def step(name: str) -> None:
 
 def main() -> None:
     print("Recreating schema...")
-    Base.metadata.drop_all(bind=engine)
+    engine.dispose()
+    db_path = engine.url.database
+    if db_path and os.path.exists(db_path):
+        os.remove(db_path)
     Base.metadata.create_all(bind=engine)
 
     def login(u: str, p: str) -> str:
@@ -83,8 +86,16 @@ def main() -> None:
     check("create supplier", sup.status_code == 201, sup.text)
     sup_id = sup.json()["id"]
 
-    mkt_a = client.post("/api/v1/markets", json={"name": "Market A", "address": "Addr 1"}, headers=auth(admin_token))
-    mkt_b = client.post("/api/v1/markets", json={"name": "Market B"}, headers=auth(admin_token))
+    mkt_a = client.post(
+        "/api/v1/markets",
+        json={"name": "Market A", "address": "Addr 1", "username": "marketa", "password": "market123"},
+        headers=auth(admin_token),
+    )
+    mkt_b = client.post(
+        "/api/v1/markets",
+        json={"name": "Market B", "username": "marketb", "password": "market123"},
+        headers=auth(admin_token),
+    )
     check("create markets", mkt_a.status_code == 201 and mkt_b.status_code == 201, mkt_a.text + mkt_b.text)
     mkt_a_id, mkt_b_id = mkt_a.json()["id"], mkt_b.json()["id"]
 
@@ -167,8 +178,9 @@ def main() -> None:
     check("admin creates order for market B", order_b.status_code == 201, order_b.text)
     order_b_id = order_b.json()["id"]
 
-    # ---- Admin approves ------------------------------------------------
+    # ---- Admin approves (stock leaves on approval) ----------------------
     step("Admin approval")
+    p0_before = client.get(f"/api/v1/products/{prod[0]}", headers=auth(admin_token)).json()
     appr = client.post(f"/api/v1/orders/{order_a_id}/approve", headers=auth(admin_token))
     check("approve order A", appr.status_code == 200, appr.text)
     check("approved_at set", appr.json()["approved_at"] is not None)
@@ -186,6 +198,9 @@ def main() -> None:
     appr_b = client.post(f"/api/v1/orders/{order_b_id}/approve", headers=auth(admin_token))
     check("approve order B", appr_b.status_code == 200, appr_b.text)
 
+    p0_after = client.get(f"/api/v1/products/{prod[0]}", headers=auth(admin_token)).json()
+    check("stock decremented on approve (100-30=70)", p0_after["current_stock"] == p0_before["current_stock"] - 30, str(p0_after))
+
     # strict transitions: cannot reject an already-approved order
     strict_reject = client.post(
         f"/api/v1/orders/{order_a_id}/reject",
@@ -194,20 +209,6 @@ def main() -> None:
     )
     check("cannot reject an approved order", strict_reject.status_code == 400, strict_reject.text)
 
-    # ---- Warehouse prepares -> delivery + PDF -> stock leaves ----------
-    step("Warehouse preparation")
-    prep = client.post(f"/api/v1/orders/{order_a_id}/prepare", headers=auth(tok_wh))
-    check("prepare order A", prep.status_code == 200, prep.text)
-    delivery_id = prep.json()["id"]
-    check("delivery created (prepared)", prep.json()["status"] == "prepared")
-    check("pdf path generated", bool(prep.json().get("pdf_path")), str(prep.json()))
-
-    p0_after = client.get(f"/api/v1/products/{prod[0]}", headers=auth(admin_token)).json()
-    check("stock decremented (100-30=70)", p0_after["current_stock"] == 70, str(p0_after))
-
-    order_status = client.get(f"/api/v1/orders/{order_a_id}", headers=auth(tok_wh)).json()
-    check("order now prepared", order_status["status"] == "prepared")
-
     # insufficient stock case
     low = client.post(
         "/api/v1/orders",
@@ -215,31 +216,10 @@ def main() -> None:
         headers=auth(tok_a),
     )
     low_id = low.json()["id"]
-    client.post(f"/api/v1/orders/{low_id}/approve", headers=auth(admin_token))
-    fail_prep = client.post(f"/api/v1/orders/{low_id}/prepare", headers=auth(tok_wh))
-    check("cannot prepare without stock", fail_prep.status_code == 400, fail_prep.text)
-
-    # ---- Delivery lifecycle ---------------------------------------------
-    step("Delivery lifecycle")
-    on_route = client.post(f"/api/v1/deliveries/{delivery_id}/start", headers=auth(tok_wh))
-    check("start delivery -> on_route", on_route.status_code == 200 and on_route.json()["status"] == "on_route")
-    order_on_route = client.get(f"/api/v1/orders/{order_a_id}", headers=auth(tok_wh)).json()
-    check("order status on_route", order_on_route["status"] == "on_route")
-
-    completed = client.post(f"/api/v1/deliveries/{delivery_id}/complete", headers=auth(tok_wh))
-    check("complete delivery", completed.status_code == 200 and completed.json()["status"] == "delivered")
-    order_final = client.get(f"/api/v1/orders/{order_a_id}", headers=auth(tok_wh)).json()
-    check("order delivered", order_final["status"] == "delivered")
-
-    pdf = client.get(f"/api/v1/deliveries/{delivery_id}/pdf", headers=auth(tok_wh))
-    check("download delivery PDF", pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf")
-
-    # prepare + deliver order B too so analytics cover it
-    prep_b = client.post(f"/api/v1/orders/{order_b_id}/prepare", headers=auth(tok_wh))
-    check("prepare order B", prep_b.status_code == 200, prep_b.text)
-    delivery_b_id = prep_b.json()["id"]
-    client.post(f"/api/v1/deliveries/{delivery_b_id}/start", headers=auth(tok_wh))
-    client.post(f"/api/v1/deliveries/{delivery_b_id}/complete", headers=auth(tok_wh))
+    fail_appr = client.post(f"/api/v1/orders/{low_id}/approve", headers=auth(admin_token))
+    check("cannot approve without stock", fail_appr.status_code == 400, fail_appr.text)
+    order_low = client.get(f"/api/v1/orders/{low_id}", headers=auth(tok_a)).json()
+    check("insufficient-stock order stays pending", order_low["status"] == "pending")
 
     # ---- Permissions on viewing -----------------------------------------
     step("Permissions")
@@ -279,8 +259,8 @@ def main() -> None:
         dash["total_products"] == 3
         and dash["total_markets"] == 2
         and dash["total_stock"] == 235
-        and dash["pending_orders"] == 0
-        and dash["approved_orders"] == 1
+        and dash["pending_orders"] == 1
+        and dash["approved_orders"] == 2
         and dash["low_stock_count"] == 0,
         str(dash),
     )
@@ -311,10 +291,8 @@ def main() -> None:
     # pagination + filtering on list endpoints
     prod_page = client.get("/api/v1/products?page=1&page_size=2&search=i", headers=auth(tok_a)).json()
     check("products pagination", prod_page["total"] == 3 and len(prod_page["items"]) == 2 and prod_page["pages"] == 2, str(prod_page)[:200])
-    order_page = client.get("/api/v1/orders?status=delivered&page=1&page_size=10", headers=auth(admin_token)).json()
-    check("orders pagination + status filter", order_page["total"] >= 2 and all(i["status"] == "delivered" for i in order_page["items"]), str(order_page)[:200])
-    del_page = client.get("/api/v1/deliveries?status=delivered", headers=auth(admin_token)).json()
-    check("deliveries status filter", all(d["status"] == "delivered" for d in del_page), str(del_page)[:200])
+    order_page = client.get("/api/v1/orders?status=approved&page=1&page_size=10", headers=auth(admin_token)).json()
+    check("orders pagination + status filter", order_page["total"] >= 2 and all(i["status"] == "approved" for i in order_page["items"]), str(order_page)[:200])
 
     # ---- Adjustments / returns -------------------------------------------
     step("Adjustments & returns")

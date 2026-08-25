@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.database import get_db
-from app.models import User
-from app.models.enums import UserRole
+from app.models import Order, OrderItem, User
+from app.models.enums import OrderStatus, UserRole
 from app.schemas.common import Page, paginate
 from app.schemas.product import ProductCreate, ProductDetail, ProductRead, ProductUpdate
 from app.services.catalog_service import ProductService
@@ -40,9 +41,11 @@ def list_products(
     reverse = sort_dir == "desc"
     products.sort(key=lambda p: getattr(p, sort_by) or "", reverse=reverse)
 
+    reserved = _reserved_by_product(db)
+    reserved_details = _reserved_details_by_product(db)
     total = len(products)
     start = (page - 1) * page_size
-    return paginate(_enrich(products[start : start + page_size]), total, page, page_size)
+    return paginate(_enrich(products[start : start + page_size], reserved, reserved_details), total, page, page_size)
 
 
 @router.get("/low-stock", response_model=list[dict])
@@ -60,7 +63,9 @@ def get_product(
     db: Session = Depends(get_db),
     _: User = any_role,
 ):
-    return _enrich([ProductService(db).repo.get_or_404(product_id)])[0]
+    reserved = _reserved_by_product(db)
+    reserved_details = _reserved_details_by_product(db)
+    return _enrich([ProductService(db).repo.get_or_404(product_id)], reserved, reserved_details)[0]
 
 
 @router.post("", response_model=ProductRead, status_code=201)
@@ -91,7 +96,53 @@ def delete_product(
     ProductService(db).repo.delete(product_id)
 
 
-def _enrich(products: list) -> list[dict]:
+def _reserved_by_product(db: Session) -> dict[int, int]:
+    """Quantities from PENDING orders — requested but not yet approved/deducted.
+
+    Since approval immediately deducts stock, only pending orders represent
+    quantities that are 'spoken for' but not yet removed from stock.
+    """
+    rows = db.execute(
+        select(OrderItem.product_id, func.coalesce(func.sum(OrderItem.quantity), 0))
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(Order.status == OrderStatus.pending)
+        .group_by(OrderItem.product_id)
+    ).all()
+    return {product_id: int(qty) for product_id, qty in rows}
+
+
+def _reserved_details_by_product(db: Session) -> dict[int, list[dict]]:
+    """Per-market breakdown of quantities in PENDING orders (awaiting admin approval)."""
+    from app.models import Market
+
+    rows = db.execute(
+        select(
+            OrderItem.product_id,
+            Market.id,
+            Market.name,
+            func.coalesce(func.sum(OrderItem.quantity), 0),
+        )
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Market, Market.id == Order.market_id)
+        .where(Order.status == OrderStatus.pending)
+        .group_by(OrderItem.product_id, Market.id, Market.name)
+        .order_by(OrderItem.product_id, Market.name)
+    ).all()
+    details: dict[int, list[dict]] = {}
+    for product_id, market_id, market_name, qty in rows:
+        details.setdefault(product_id, []).append(
+            {"market_id": market_id, "market_name": market_name, "quantity": int(qty)}
+        )
+    return details
+
+
+def _enrich(
+    products: list,
+    reserved: dict[int, int] | None = None,
+    reserved_details: dict[int, list[dict]] | None = None,
+) -> list[dict]:
+    reserved = reserved or {}
+    reserved_details = reserved_details or {}
     return [
         {
             "id": p.id,
@@ -102,7 +153,10 @@ def _enrich(products: list) -> list[dict]:
             "category_name": p.category.name if p.category else None,
             "supplier_name": p.supplier.name if p.supplier else None,
             "purchase_price": p.purchase_price,
+            "supplier_price": p.supplier_price,
             "current_stock": p.current_stock,
+            "reserved_stock": reserved.get(p.id, 0),
+            "reserved_by_market": reserved_details.get(p.id, []),
             "minimum_stock": p.minimum_stock,
             "unit": p.unit,
             "image_url": p.image_url,

@@ -54,10 +54,10 @@ def test_most_requested_and_low_stock(db, env):
         assert {"product_id", "product_name", "sku", "total_quantity", "order_count"} <= set(item)
 
 
-def test_orders_per_market_includes_on_route(db, env):
+def test_orders_per_market_includes_rejected(db, env):
     rows = AnalyticsService(db).orders_per_market()
     assert rows
-    assert "on_route" in rows[0]
+    assert {"pending", "approved", "rejected"} <= set(rows[0])
 
 
 def test_monthly_distribution_shape(db, env):

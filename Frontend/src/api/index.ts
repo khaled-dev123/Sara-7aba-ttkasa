@@ -1,9 +1,13 @@
 import api from "@/lib/api-client";
-import type { Page, UserWithMarket, TokenPair, Category, Supplier, ProductDetail, Market, OrderDetail, DeliveryDetail, DashboardSummary, AuditLog, ProductAnalytics, MarketAnalytics, StockMovement, PurchaseOrderDetail, LowStockItem } from "@/types";
+import type { Page, UserWithMarket, TokenPair, LoginResponse, Profile, Category, Supplier, ProductDetail, Market, OrderDetail, DashboardSummary, AuditLog, ProductAnalytics, MarketAnalytics, StockMovement, PurchaseOrderDetail, LowStockItem } from "@/types";
 
 export const authApi = {
+  profiles: () =>
+    api.get<Profile[]>("/auth/profiles").then((r) => r.data),
   login: (username: string, password: string) =>
-    api.post<TokenPair>("/auth/login", { username, password }).then((r) => r.data),
+    api.post<LoginResponse>("/auth/login", { username, password }).then((r) => r.data),
+  selectRole: (role: string, market_id?: number) =>
+    api.post<TokenPair>("/auth/select-role", { role, market_id }).then((r) => r.data),
   refresh: (refresh_token: string) =>
     api.post<TokenPair>("/auth/refresh", { refresh_token }).then((r) => r.data),
   me: () => api.get<UserWithMarket>("/auth/me").then((r) => r.data),
@@ -39,7 +43,7 @@ export const productApi = {
   list: (params?: { category_id?: number; active?: boolean; search?: string; sort_by?: string; sort_dir?: string; page?: number; page_size?: number }) =>
     api.get<Page<ProductDetail>>("/products", { params }).then((r) => r.data),
   get: (id: number) => api.get<ProductDetail>(`/products/${id}`).then((r) => r.data),
-  create: (data: { name: string; sku: string; category_id: number; supplier_id: number; purchase_price: number; current_stock?: number; minimum_stock: number; unit?: string; image_url?: string; is_active?: boolean }) =>
+  create: (data: { name: string; sku: string; category_id: number; supplier_id: number; purchase_price: number; supplier_price?: number; current_stock?: number; minimum_stock: number; unit?: string; image_url?: string; is_active?: boolean }) =>
     api.post<ProductDetail>("/products", data).then((r) => r.data),
   update: (id: number, data: Record<string, unknown>) =>
     api.patch<ProductDetail>(`/products/${id}`, data).then((r) => r.data),
@@ -52,11 +56,17 @@ export const marketApi = {
   list: (active?: boolean) =>
     api.get<Market[]>("/markets", { params: active !== undefined ? { active } : {} }).then((r) => r.data),
   get: (id: number) => api.get<Market>(`/markets/${id}`).then((r) => r.data),
-  create: (data: { name: string; address?: string; phone?: string; manager_name?: string; is_active?: boolean }) =>
+  create: (data: { name: string; address?: string; phone?: string; manager_name?: string; is_active?: boolean; username: string; password: string }) =>
     api.post<Market>("/markets", data).then((r) => r.data),
   update: (id: number, data: Record<string, unknown>) =>
     api.patch<Market>(`/markets/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/markets/${id}`),
+  listUsers: (id: number) =>
+    api.get<{ user_id: number; username: string; email: string }[]>(`/markets/${id}/users`).then((r) => r.data),
+  assignUser: (marketId: number, userId: number) =>
+    api.post(`/markets/${marketId}/users`, null, { params: { user_id: userId } }).then((r) => r.data),
+  removeUser: (marketId: number, userId: number) =>
+    api.delete(`/markets/${marketId}/users/${userId}`).then((r) => r.data),
 };
 
 export const orderApi = {
@@ -64,20 +74,10 @@ export const orderApi = {
     api.get<Page<OrderDetail>>("/orders", { params }).then((r) => r.data),
   get: (id: number) => api.get<OrderDetail>(`/orders/${id}`).then((r) => r.data),
   create: (data: { market_id?: number; items: { product_id: number; quantity: number }[]; notes?: string }) =>
-    api.post<OrderDetail>("/orders", data).then((r) => r.data),
+    api.post<OrderDetail>("/orders", data, { params: data.market_id ? { market_id: data.market_id } : {} }).then((r) => r.data),
   approve: (id: number) => api.post<OrderDetail>(`/orders/${id}/approve`).then((r) => r.data),
   reject: (id: number, reason?: string) =>
     api.post<OrderDetail>(`/orders/${id}/reject`, { reason }).then((r) => r.data),
-  prepare: (id: number) => api.post(`/orders/${id}/prepare`).then((r) => r.data),
-};
-
-export const deliveryApi = {
-  list: (params?: { status?: string; market_id?: number }) =>
-    api.get<DeliveryDetail[]>("/deliveries", { params }).then((r) => r.data),
-  get: (id: number) => api.get<DeliveryDetail>(`/deliveries/${id}`).then((r) => r.data),
-  start: (id: number) => api.post(`/deliveries/${id}/start`).then((r) => r.data),
-  complete: (id: number) => api.post(`/deliveries/${id}/complete`).then((r) => r.data),
-  pdfUrl: (id: number) => `/api/v1/deliveries/${id}/pdf`,
 };
 
 export const purchaseApi = {

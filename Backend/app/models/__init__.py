@@ -3,11 +3,8 @@ from app.models.audit_log import AuditLog
 from app.models.auth_token import AuthToken
 from app.models.base import TimestampMixin
 from app.models.category import Category
-from app.models.delivery import Delivery
-from app.models.delivery_item import DeliveryItem
 from app.models.enums import (
     AuthTokenPurpose,
-    DeliveryStatus,
     OrderStatus,
     PurchaseOrderStatus,
     StockMovementType,
@@ -23,6 +20,7 @@ from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.models.user_role import UserRoleEntry
 
 __all__ = [
     "Base",
@@ -30,9 +28,6 @@ __all__ = [
     "AuthToken",
     "AuthTokenPurpose",
     "Category",
-    "Delivery",
-    "DeliveryItem",
-    "DeliveryStatus",
     "Market",
     "MarketUser",
     "Order",
@@ -48,4 +43,5 @@ __all__ = [
     "TimestampMixin",
     "User",
     "UserRole",
+    "UserRoleEntry",
 ]

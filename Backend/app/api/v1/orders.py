@@ -7,7 +7,6 @@ from app.errors import AppError, PermissionDeniedError
 from app.models import User
 from app.models.enums import UserRole
 from app.schemas.common import Page, paginate
-from app.schemas.delivery import DeliveryRead
 from app.schemas.order import OrderCreate, OrderDetail, OrderReject
 from app.services.order_service import OrderService
 
@@ -16,7 +15,6 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 any_role = Depends(require_roles(UserRole.admin, UserRole.warehouse, UserRole.market))
 create_roles = Depends(require_roles(UserRole.admin, UserRole.market))
 admin_only = Depends(require_roles(UserRole.admin))
-warehouse_only = Depends(require_roles(UserRole.warehouse))
 
 
 @router.post("", response_model=OrderDetail, status_code=201)
@@ -86,13 +84,3 @@ def reject_order(
     service = OrderService(db)
     order = service.reject(order_id, admin, payload.reason)
     return service._order_detail(order)
-
-
-@router.post("/{order_id}/prepare", response_model=DeliveryRead)
-def prepare_order(
-    order_id: int,
-    db: Session = Depends(get_db),
-    warehouse: User = warehouse_only,
-):
-    delivery = OrderService(db).prepare(order_id, warehouse)
-    return delivery

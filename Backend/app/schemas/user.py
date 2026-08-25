@@ -33,3 +33,4 @@ class UserUpdate(BaseModel):
 class UserWithMarket(UserRead):
     market_id: int | None = None
     market_name: str | None = None
+    available_roles: list[dict] = []

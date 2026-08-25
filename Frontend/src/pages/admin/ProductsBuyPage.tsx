@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useProducts, useCategories, useSuppliers, useCreateProduct, useUpdateProduct, useDeleteProduct } from "@/hooks";
+import { useAuth } from "@/contexts/AuthContext";
 import { type ProductDetail } from "@/types";
 import { PageHeader, Pagination, TableSkeleton, EmptyState, ConfirmDialog, useToast } from "@/components/shared";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,6 +22,7 @@ const productSchema = z.object({
   category_id: z.coerce.number().min(1, "Category is required"),
   supplier_id: z.coerce.number().min(1, "Supplier is required"),
   purchase_price: z.coerce.number().min(0, "Price must be positive"),
+  supplier_price: z.coerce.number().min(0, "Price must be positive"),
   current_stock: z.coerce.number().min(0, "Stock must be non-negative"),
   minimum_stock: z.coerce.number().min(0, "Minimum stock must be non-negative"),
   unit: z.string().default("piece"),
@@ -28,7 +30,8 @@ const productSchema = z.object({
 
 type ProductFormData = z.infer<typeof productSchema>;
 
-export default function ProductsPage() {
+export default function ProductsBuyPage() {
+  const { user } = useAuth();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
@@ -51,12 +54,12 @@ export default function ProductsPage() {
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
-    defaultValues: { name: "", sku: "", category_id: 0, supplier_id: 0, purchase_price: 0, current_stock: 0, minimum_stock: 0, unit: "piece" },
+    defaultValues: { name: "", sku: "", category_id: 0, supplier_id: 0, purchase_price: 0, supplier_price: 0, current_stock: 0, minimum_stock: 0, unit: "piece" },
   });
 
   const openCreate = () => {
     setEditProduct(null);
-    reset({ name: "", sku: "", category_id: 0, supplier_id: 0, purchase_price: 0, current_stock: 0, minimum_stock: 0, unit: "piece" });
+    reset({ name: "", sku: "", category_id: 0, supplier_id: 0, purchase_price: 0, supplier_price: 0, current_stock: 0, minimum_stock: 0, unit: "piece" });
     setDialogOpen(true);
   };
 
@@ -68,6 +71,7 @@ export default function ProductsPage() {
       category_id: product.category_id,
       supplier_id: product.supplier_id,
       purchase_price: product.purchase_price,
+      supplier_price: product.supplier_price,
       current_stock: product.current_stock,
       minimum_stock: product.minimum_stock,
       unit: product.unit,
@@ -105,12 +109,14 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Products"
-        description="Manage your product catalog"
+        title="Products (Buy)"
+        description="Manage purchasing: suppliers, purchase prices and stock intake"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> Add Product
-          </Button>
+          user?.role === "admin" ? (
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" /> Add Product
+            </Button>
+          ) : undefined
         }
       />
 
@@ -152,6 +158,7 @@ export default function ProductsPage() {
                   <TableHead>Category</TableHead>
                   <TableHead>Supplier</TableHead>
                   <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Supplier Price</TableHead>
                   <TableHead className="text-right">Stock</TableHead>
                   <TableHead className="text-right">Min Stock</TableHead>
                   <TableHead>Status</TableHead>
@@ -177,6 +184,7 @@ export default function ProductsPage() {
                     <TableCell>{product.category_name || "-"}</TableCell>
                     <TableCell>{product.supplier_name || "-"}</TableCell>
                     <TableCell className="text-right">{formatCurrency(product.purchase_price)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(product.supplier_price)}</TableCell>
                     <TableCell className="text-right">
                       <span className={product.current_stock <= product.minimum_stock ? "text-red-600 font-medium" : ""}>
                         {product.current_stock}
@@ -252,11 +260,16 @@ export default function ProductsPage() {
                 {errors.supplier_id && <p className="text-xs text-destructive">{errors.supplier_id.message}</p>}
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Purchase Price</Label>
                 <Input type="number" step="0.01" {...register("purchase_price")} />
                 {errors.purchase_price && <p className="text-xs text-destructive">{errors.purchase_price.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>Supplier Price</Label>
+                <Input type="number" step="0.01" {...register("supplier_price")} />
+                {errors.supplier_price && <p className="text-xs text-destructive">{errors.supplier_price.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Current Stock</Label>

@@ -136,7 +136,7 @@ def test_market_service_and_users(db, env):
     from app.schemas.market import MarketCreate
     from app.services.catalog_service import MarketService
 
-    m = MarketService(db).create(MarketCreate(name="Market C"))
+    m = MarketService(db).create(MarketCreate(name="Market C", username="marketc", password="market123"))
     assert m.id
 
     # duplicate usernames rejected

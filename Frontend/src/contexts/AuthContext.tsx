@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { authApi } from "@/api";
 import { setTokens, clearTokens, loadTokens } from "@/lib/api-client";
-import type { UserWithMarket } from "@/types";
+import type { UserWithMarket, AvailableRole } from "@/types";
 
 interface AuthContextType {
   user: UserWithMarket | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<UserWithMarket>;
+  login: (username: string, password: string) => Promise<{ userData: UserWithMarket; requiresRoleSelection: boolean; availableRoles: AvailableRole[] }>;
+  selectRole: (role: string, market_id?: number) => Promise<UserWithMarket>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -38,7 +39,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadUser]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const tokens = await authApi.login(username, password);
+    const loginData = await authApi.login(username, password);
+    setTokens(loginData.access_token, loginData.refresh_token);
+    const userData = await authApi.me();
+    setUser(userData);
+    return {
+      userData,
+      requiresRoleSelection: loginData.requires_role_selection,
+      availableRoles: loginData.available_roles,
+    };
+  }, []);
+
+  const selectRole = useCallback(async (role: string, market_id?: number) => {
+    const tokens = await authApi.selectRole(role, market_id);
     setTokens(tokens.access_token, tokens.refresh_token);
     const userData = await authApi.me();
     setUser(userData);
@@ -60,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, isLoading, login, selectRole, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

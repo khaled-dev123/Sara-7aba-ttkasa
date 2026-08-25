@@ -1,10 +1,11 @@
 from typing import Generic, TypeVar
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import Base
-from app.errors import NotFoundError
+from app.errors import ConflictError, NotFoundError
 
 T = TypeVar("T", bound=Base)
 
@@ -54,7 +55,14 @@ class BaseRepository(Generic[T]):
     def delete(self, obj_id: int) -> None:
         obj = self.get_or_404(obj_id)
         self.db.delete(obj)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ConflictError(
+                f"{self.model.__name__} {obj_id} cannot be deleted because it is "
+                "referenced by other records"
+            ) from exc
 
     def count(self, **kwargs) -> int:
         stmt = select(func.count()).select_from(self.model)

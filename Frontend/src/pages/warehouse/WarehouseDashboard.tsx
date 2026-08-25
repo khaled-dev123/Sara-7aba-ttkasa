@@ -1,19 +1,15 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrders, useDeliveries } from "@/hooks";
+import { useOrders } from "@/hooks";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageSkeleton } from "@/components/shared";
-import { ClipboardList, Truck, Package } from "lucide-react";
+import { ClipboardList, CheckCircle, Clock } from "lucide-react";
 
 export default function WarehouseDashboard() {
   const { user } = useAuth();
-  const { data: ordersData, isLoading: ordersLoading } = useOrders({ status: "approved", page_size: 100 });
-  const { data: deliveries, isLoading: delLoading } = useDeliveries({ status: "on_route" });
+  const { data: approvedData, isLoading: approvedLoading } = useOrders({ status: "approved", page_size: 100 });
+  const { data: pendingData, isLoading: pendingLoading } = useOrders({ status: "pending", page_size: 100 });
 
-  if (ordersLoading || delLoading) return <PageSkeleton />;
-
-  const prepQueue = ordersData?.items?.filter((o) => o.status === "approved") || [];
-  const onRoute = ordersData?.items?.filter((o) => o.status === "prepared") || [];
-  const deliveredToday = deliveries?.filter((d) => d.status === "delivered") || [];
+  if (approvedLoading || pendingLoading) return <PageSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -23,9 +19,9 @@ export default function WarehouseDashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <KpiCard title="Orders to Prepare" value={prepQueue.length} icon={<ClipboardList className="h-5 w-5" />} iconColor="text-yellow-600" />
-        <KpiCard title="Orders On Route" value={onRoute.length} icon={<Truck className="h-5 w-5" />} iconColor="text-blue-600" />
-        <KpiCard title="Delivered Today" value={deliveredToday.length} icon={<Package className="h-5 w-5" />} iconColor="text-green-600" />
+        <KpiCard title="Approved Orders" value={approvedData?.total || 0} icon={<CheckCircle className="h-5 w-5" />} iconColor="text-green-600" />
+        <KpiCard title="Pending Approval" value={pendingData?.total || 0} icon={<Clock className="h-5 w-5" />} iconColor="text-yellow-600" />
+        <KpiCard title="Total to Dispatch" value={(approvedData?.total || 0) + (pendingData?.total || 0)} icon={<ClipboardList className="h-5 w-5" />} iconColor="text-blue-600" />
       </div>
     </div>
   );

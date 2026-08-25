@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.models import MarketUser, User
+from app.models import MarketUser, User, UserRoleEntry
 from app.repositories.base import BaseRepository
 
 
@@ -27,3 +27,10 @@ class MarketUserRepository(BaseRepository[MarketUser]):
 
     def get_by_user(self, user_id: int) -> MarketUser | None:
         return self.db.scalar(select(MarketUser).where(MarketUser.user_id == user_id))
+
+
+class UserRoleRepository(BaseRepository[UserRoleEntry]):
+    model = UserRoleEntry
+
+    def get_by_user(self, user_id: int) -> list[UserRoleEntry]:
+        return list(self.db.scalars(select(UserRoleEntry).where(UserRoleEntry.user_id == user_id)))

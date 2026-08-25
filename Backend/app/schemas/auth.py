@@ -15,6 +15,19 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    available_roles: list[dict]
+    requires_role_selection: bool
+
+
+class SelectRoleRequest(BaseModel):
+    role: str
+    market_id: int | None = None
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

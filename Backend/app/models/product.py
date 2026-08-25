@@ -20,6 +20,7 @@ class Product(TimestampMixin, Base):
         ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     purchase_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    supplier_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
     current_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False, index=True)
     minimum_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     unit: Mapped[str] = mapped_column(String(20), default="piece")

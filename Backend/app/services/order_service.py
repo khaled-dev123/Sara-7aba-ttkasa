@@ -4,18 +4,12 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from app.errors import AppError, NotFoundError, PermissionDeniedError
-from app.models import Delivery, DeliveryItem, Market, Order, OrderItem, Product, User
-from app.models.enums import DeliveryStatus, OrderStatus, StockMovementType, UserRole
+from app.models import Market, Order, OrderItem, Product, User
+from app.models.enums import OrderStatus, StockMovementType, UserRole
 from app.repositories.catalog import MarketRepository, ProductRepository
-from app.repositories.orders import (
-    DeliveryItemRepository,
-    DeliveryRepository,
-    OrderItemRepository,
-    OrderRepository,
-)
+from app.repositories.orders import OrderItemRepository, OrderRepository
 from app.schemas.order import OrderCreate
 from app.services.audit_service import AuditService
-from app.services.delivery_pdf import generate_delivery_pdf
 from app.services.stock_service import StockService
 
 # Allowed order state transitions (strict): current -> {next: action label}
@@ -24,21 +18,6 @@ ORDER_TRANSITIONS: dict[OrderStatus, dict[OrderStatus, str]] = {
         OrderStatus.approved: "approve",
         OrderStatus.rejected: "reject",
     },
-    OrderStatus.approved: {
-        OrderStatus.prepared: "prepare",
-    },
-    OrderStatus.prepared: {
-        OrderStatus.on_route: "start delivery",
-    },
-    OrderStatus.on_route: {
-        OrderStatus.delivered: "complete delivery",
-    },
-}
-
-# Allowed delivery status transitions
-DELIVERY_TRANSITIONS: dict[DeliveryStatus, set[DeliveryStatus]] = {
-    DeliveryStatus.prepared: {DeliveryStatus.on_route},
-    DeliveryStatus.on_route: {DeliveryStatus.delivered},
 }
 
 
@@ -47,8 +26,6 @@ class OrderService:
         self.db = db
         self.orders = OrderRepository(db)
         self.order_items = OrderItemRepository(db)
-        self.deliveries = DeliveryRepository(db)
-        self.delivery_items = DeliveryItemRepository(db)
         self.markets = MarketRepository(db)
         self.products = ProductRepository(db)
         self.stock = StockService(db)
@@ -80,14 +57,6 @@ class OrderService:
                 f"Allowed: {', '.join(s.value for s in (allowed or {})) or 'none'}"
             )
 
-    def _delivery_transition(self, delivery: Delivery, target: DeliveryStatus) -> None:
-        allowed = DELIVERY_TRANSITIONS.get(delivery.status, set())
-        if target not in allowed:
-            raise AppError(
-                f"Invalid delivery transition {delivery.status.value} -> {target.value}. "
-                f"Allowed: {', '.join(s.value for s in allowed) or 'none'}"
-            )
-
     def _order_detail(self, order: Order) -> dict:
         items = []
         for item in order.items:
@@ -99,6 +68,8 @@ class OrderService:
                     "product_name": item.product.name if item.product else None,
                     "sku": item.product.sku if item.product else None,
                     "unit": item.product.unit if item.product else None,
+                    "current_stock": item.product.current_stock if item.product else None,
+                    "minimum_stock": item.product.minimum_stock if item.product else None,
                 }
             )
         return {
@@ -113,7 +84,6 @@ class OrderService:
             "approved_by": order.approved_by,
             "approved_by_username": order.approver.username if order.approver else None,
             "notes": order.notes,
-            "delivery_id": order.delivery.id if order.delivery else None,
             "items": items,
         }
 
@@ -201,31 +171,11 @@ class OrderService:
     # ----- workflow -----------------------------------------------------
 
     def approve(self, order_id: int, admin: User) -> Order:
+        """pending -> approved. Deducts the ordered quantities from stock."""
         order = self.orders.get_or_404(order_id)
         self._transition(order, OrderStatus.approved, admin.username)
         if not order.items:
             raise AppError("Order has no items")
-        order.status = OrderStatus.approved
-        order.approved_at = datetime.now()
-        order.approved_by = admin.id
-        self.audit.log_order_approval(order.id, admin.id, order_number=order.order_number)
-        return self.orders.save(order)
-
-    def reject(self, order_id: int, admin: User, reason: str = "") -> Order:
-        order = self.orders.get_or_404(order_id)
-        self._transition(order, OrderStatus.rejected, admin.username)
-        order.status = OrderStatus.rejected
-        order.approved_at = datetime.now()
-        order.approved_by = admin.id
-        if reason:
-            order.notes = (order.notes + "\nRejected: " + reason).strip()
-        self.audit.log_order_rejection(order.id, admin.id, reason=reason)
-        return self.orders.save(order)
-
-    def prepare(self, order_id: int, warehouse_user: User) -> Delivery:
-        """approved -> prepared. Creates the Delivery + PDF and removes stock."""
-        order = self.orders.get_or_404(order_id)
-        self._transition(order, OrderStatus.prepared, warehouse_user.username)
 
         product_qty: dict[int, int] = {}
         for item in order.items:
@@ -239,85 +189,28 @@ class OrderService:
                     f"(available {product.current_stock}, required {qty})"
                 )
 
-        delivery = Delivery(
-            order_id=order.id,
-            delivery_date=datetime.now(),
-            status=DeliveryStatus.prepared,
-            prepared_by=warehouse_user.id,
-        )
-        self.deliveries.add(delivery)
-
+        order.status = OrderStatus.approved
+        order.approved_at = datetime.now()
+        order.approved_by = admin.id
         for product_id, qty in product_qty.items():
-            self.delivery_items.add(
-                DeliveryItem(delivery=delivery, product_id=product_id, quantity=qty)
-            )
             self.stock.remove_stock(
                 product_id,
                 qty,
                 StockMovementType.delivery,
                 "delivery",
                 None,
-                warehouse_user.id,
+                admin.id,
             )
+        self.audit.log_order_approval(order.id, admin.id, order_number=order.order_number)
+        return self.orders.save(order)
 
-        self.db.flush()
-        delivery.pdf_path = self._generate_pdf(delivery, order)
-        order.status = OrderStatus.prepared
-        self.audit.log_order_prepared(order.id, delivery.id, warehouse_user.id)
-        self.db.commit()
-        self.db.refresh(delivery)
-        return delivery
-
-    def _generate_pdf(self, delivery: Delivery, order: Order) -> str | None:
-        items = [
-            {
-                "product_name": item.product.name if item.product else None,
-                "sku": item.product.sku if item.product else None,
-                "quantity": item.quantity,
-                "unit": item.product.unit if item.product else None,
-            }
-            for item in delivery.items
-        ]
-        try:
-            return generate_delivery_pdf(
-                delivery_id=delivery.id,
-                order_number=order.order_number,
-                market_name=order.market.name if order.market else "Market",
-                market_address=order.market.address if order.market else "",
-                market_phone=order.market.phone if order.market else "",
-                market_manager=order.market.manager_name if order.market else "",
-                delivery_date=delivery.delivery_date,
-                prepared_by=delivery.preparer.username if delivery.preparer else "Warehouse",
-                items=items,
-                filename=f"delivery_{order.order_number}.pdf",
-            )
-        except Exception:
-            return None
-
-    def start_delivery(self, delivery_id: int, warehouse_user: User) -> Delivery:
-        """prepared -> on_route (order + delivery move together)."""
-        delivery = self.deliveries.get_or_404(delivery_id)
-        self._delivery_transition(delivery, DeliveryStatus.on_route)
-        order = self.orders.get_or_404(delivery.order_id)
-        self._transition(order, OrderStatus.on_route, warehouse_user.username)
-        delivery.status = DeliveryStatus.on_route
-        order.status = OrderStatus.on_route
-        self.audit.log("order.on_route", "order", order.id, warehouse_user.id)
-        self.db.commit()
-        self.db.refresh(delivery)
-        return delivery
-
-    def complete_delivery(self, delivery_id: int, warehouse_user: User) -> Delivery:
-        """on_route -> delivered (order + delivery move together)."""
-        delivery = self.deliveries.get_or_404(delivery_id)
-        self._delivery_transition(delivery, DeliveryStatus.delivered)
-        order = self.orders.get_or_404(delivery.order_id)
-        self._transition(order, OrderStatus.delivered, warehouse_user.username)
-        delivery.status = DeliveryStatus.delivered
-        delivery.delivered_by = warehouse_user.id
-        delivery.delivery_date = datetime.now()
-        order.status = OrderStatus.delivered
-        self.audit.log("order.delivered", "order", order.id, warehouse_user.id)
-        self.db.commit()
-        self.db.refresh(delivery)
-        return delivery
+    def reject(self, order_id: int, admin: User, reason: str = "") -> Order:
+        order = self.orders.get_or_404(order_id)
+        self._transition(order, OrderStatus.rejected, admin.username)
+        order.status = OrderStatus.rejected
+        order.approved_at = datetime.now()
+        order.approved_by = admin.id
+        if reason:
+            order.notes = (order.notes + "\nRejected: " + reason).strip()
+        self.audit.log_order_rejection(order.id, admin.id, reason=reason)
+        return self.orders.save(order)
