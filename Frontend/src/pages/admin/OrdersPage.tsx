@@ -34,7 +34,7 @@ export default function OrdersPage() {
 
   const handleApprove = async (id: number) => {
     try {
-      await approveMutation.mutateAsync(id);
+      await approveMutation.mutateAsync({ id });
       addToast({ title: "Order approved" });
     } catch (err: any) {
       addToast({ title: "Error", description: err?.response?.data?.detail || "Failed", variant: "destructive" });

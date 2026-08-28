@@ -11,6 +11,7 @@ import { Timeline } from "@/components/ui/timeline";
 import { ArrowLeft, Check, X, Package, AlertTriangle, Store, TrendingDown } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 import { useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function OrderDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,8 +38,44 @@ export default function OrderDetailsPage() {
         },
   ];
 
-  const handleApprove = async () => {
-    await approveMutation.mutateAsync(orderId);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [warningOpen, setWarningOpen] = useState(false);
+  const [deliverQuantities, setDeliverQuantities] = useState<Record<number, number>>(() =>
+    Object.fromEntries(order.items.map((it) => [it.product_id, Math.min(it.quantity, it.current_stock ?? 0)]))
+  );
+
+  const stockWarningItems = order.items.filter((item) => {
+    const selectedQty = deliverQuantities[item.product_id] ?? 0;
+    const availableQty = item.current_stock ?? 0;
+    return availableQty > 0 && selectedQty >= availableQty;
+  });
+
+  const openApproveModal = () => {
+    setDeliverQuantities(Object.fromEntries(order.items.map((it) => [it.product_id, Math.min(it.quantity, it.current_stock ?? 0)])));
+    setApproveOpen(true);
+  };
+
+  const finalApprove = async () => {
+    const payloadItems = order.items.map((item) => ({
+      product_id: item.product_id,
+      quantity: Math.max(0, Number(deliverQuantities[item.product_id] ?? 0)),
+    }));
+    await approveMutation.mutateAsync({ id: orderId, payload: { items: payloadItems } });
+    setApproveOpen(false);
+    setWarningOpen(false);
+  };
+
+  const handleApproveConfirm = async () => {
+    const finalQtySelected = stockWarningItems.length > 0;
+    if (finalQtySelected) {
+      setWarningOpen(true);
+      return;
+    }
+    await finalApprove();
+  };
+
+  const handleQtyChange = (product_id: number, value: number) => {
+    setDeliverQuantities((prev) => ({ ...prev, [product_id]: value }));
   };
 
   const handleReject = async () => {
@@ -260,7 +297,7 @@ export default function OrderDetailsPage() {
               <CardContent className="space-y-3">
                 <Button
                   className="w-full"
-                  onClick={handleApprove}
+                  onClick={openApproveModal}
                   disabled={approveMutation.isPending}
                 >
                   <Check className="mr-2 h-4 w-4" /> Approve Order
@@ -295,6 +332,56 @@ export default function OrderDetailsPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Approve modal */}
+          <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Partial delivery approval</DialogTitle>
+                <DialogDescription>Enter how many units to deliver for each product. This order will remain approved; no pending backorder will be created.</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                {order.items.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium truncate">{item.product_name}</div>
+                      <div className="text-xs text-muted-foreground">Requested: {item.quantity} • Available: {item.current_stock ?? 0}</div>
+                    </div>
+                    <div className="w-32">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={Math.max(item.quantity, item.current_stock ?? 0)}
+                        value={deliverQuantities[item.product_id] ?? 0}
+                        onChange={(e) => handleQtyChange(item.product_id, Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setApproveOpen(false)}>Cancel</Button>
+                <Button onClick={handleApproveConfirm} disabled={approveMutation.isPending}>Confirm & Approve</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={warningOpen} onOpenChange={setWarningOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Final stock warning</DialogTitle>
+                <DialogDescription>
+                  This approval will use the last available stock for {stockWarningItems.length > 0 ? stockWarningItems.map((item) => item.product_name || `Product #${item.product_id}`).join(", ") : "the selected items"}. Please confirm that this is intentional before proceeding.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setWarningOpen(false)}>Cancel</Button>
+                <Button onClick={finalApprove} disabled={approveMutation.isPending}>Proceed with approval</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </div>

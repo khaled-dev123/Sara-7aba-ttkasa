@@ -75,9 +75,14 @@ export const orderApi = {
   get: (id: number) => api.get<OrderDetail>(`/orders/${id}`).then((r) => r.data),
   create: (data: { market_id?: number; items: { product_id: number; quantity: number }[]; notes?: string }) =>
     api.post<OrderDetail>("/orders", data, { params: data.market_id ? { market_id: data.market_id } : {} }).then((r) => r.data),
-  approve: (id: number) => api.post<OrderDetail>(`/orders/${id}/approve`).then((r) => r.data),
+  approve: (id: number, payload?: { items?: { product_id: number; quantity: number }[] } | null) => api.post<OrderDetail>(`/orders/${id}/approve`, payload ?? {}).then((r) => r.data),
   reject: (id: number, reason?: string) =>
     api.post<OrderDetail>(`/orders/${id}/reject`, { reason }).then((r) => r.data),
+};
+
+export const notificationApi = {
+  list: () => api.get<any[]>("/notifications").then((r) => r.data),
+  markRead: (id: number) => api.patch(`/notifications/${id}/read`).then((r) => r.data),
 };
 
 export const purchaseApi = {

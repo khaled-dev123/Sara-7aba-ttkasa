@@ -30,6 +30,14 @@ class OrderReject(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class OrderApprove(BaseModel):
+    """Optional payload for approving an order. When provided, items list specifies
+    how many units are being delivered for each product. Any remaining quantities
+    will be created as a backorder.
+    """
+    items: list[OrderItemIn] | None = None
+
+
 class OrderItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,6 +52,7 @@ class OrderItemDetail(OrderItemRead):
     unit: str | None = None
     current_stock: int | None = None
     minimum_stock: int | None = None
+    delivered_quantity: int | None = 0
 
 
 class OrderRead(BaseModel):

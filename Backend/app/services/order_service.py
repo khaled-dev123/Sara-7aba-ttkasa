@@ -96,7 +96,14 @@ class OrderService:
         if not market.is_active:
             raise AppError("Market is inactive, cannot place orders")
 
-        self._validate_products(item.product_id for item in payload.items)
+        products = self._validate_products(item.product_id for item in payload.items)
+        for item in payload.items:
+            product = products[item.product_id]
+            if item.quantity > product.current_stock:
+                raise AppError(
+                    f"Requested quantity for '{product.name}' exceeds available stock "
+                    f"({product.current_stock} available, requested {item.quantity})"
+                )
 
         order = Order(
             order_number=self._next_order_number(),
@@ -170,38 +177,102 @@ class OrderService:
 
     # ----- workflow -----------------------------------------------------
 
-    def approve(self, order_id: int, admin: User) -> Order:
-        """pending -> approved. Deducts the ordered quantities from stock."""
+    def approve(self, order_id: int, admin: User, delivered_items: list[dict] | None = None) -> Order:
+        """pending -> approved. Deducts the delivered quantities from stock.
+
+        If the stock is insufficient to fulfill the full requested quantity, the admin
+        may approve a reduced quantity. In that case the original order remains approved
+        and is not converted into a pending backorder.
+        """
         order = self.orders.get_or_404(order_id)
         self._transition(order, OrderStatus.approved, admin.username)
         if not order.items:
             raise AppError("Order has no items")
 
-        product_qty: dict[int, int] = {}
+        requested_qty: dict[int, int] = {}
         for item in order.items:
-            product_qty[item.product_id] = product_qty.get(item.product_id, 0) + item.quantity
+            requested_qty[item.product_id] = requested_qty.get(item.product_id, 0) + item.quantity
 
-        for product_id, qty in product_qty.items():
+        delivered_map: dict[int, int] = {}
+        if delivered_items:
+            for it in delivered_items:
+                pid = it.get("product_id")
+                q = int(it.get("quantity", 0))
+                if pid not in requested_qty:
+                    raise AppError(f"Product {pid} is not part of order {order_id}")
+                if q < 0 or q > requested_qty[pid]:
+                    raise AppError(f"Delivered quantity for product {pid} must be between 0 and {requested_qty[pid]}")
+                delivered_map[pid] = q
+
+        if not delivered_map:
+            for product_id, qty in requested_qty.items():
+                product = self.products.get_or_404(product_id)
+                if product.current_stock < qty:
+                    raise AppError(
+                        f"Insufficient stock for '{product.name}' "
+                        f"(available {product.current_stock}, required {qty})"
+                    )
+            delivered_map = {pid: qty for pid, qty in requested_qty.items()}
+
+        for product_id, deliver_qty in delivered_map.items():
             product = self.products.get_or_404(product_id)
-            if product.current_stock < qty:
+            if product.current_stock < deliver_qty:
                 raise AppError(
                     f"Insufficient stock for '{product.name}' "
-                    f"(available {product.current_stock}, required {qty})"
+                    f"(available {product.current_stock}, attempted deliver {deliver_qty})"
                 )
 
         order.status = OrderStatus.approved
         order.approved_at = datetime.now()
         order.approved_by = admin.id
-        for product_id, qty in product_qty.items():
-            self.stock.remove_stock(
-                product_id,
-                qty,
-                StockMovementType.delivery,
-                "delivery",
-                None,
-                admin.id,
-            )
-        self.audit.log_order_approval(order.id, admin.id, order_number=order.order_number)
+
+        for product_id, deliver_qty in delivered_map.items():
+            if deliver_qty > 0:
+                self.stock.remove_stock(
+                    product_id,
+                    deliver_qty,
+                    StockMovementType.delivery,
+                    "delivery",
+                    None,
+                    admin.id,
+                )
+
+        for item in order.items:
+            item.delivered_quantity = delivered_map.get(item.product_id, 0)
+
+        partial_delivery = any(
+            delivered_map.get(item.product_id, 0) < item.quantity for item in order.items
+        )
+        if partial_delivery:
+            order.notes = (
+                (order.notes or "")
+                + "\nApproved with partial delivery due to low stock."
+            ).strip()
+
+            # Notify the market that approval happened but full quantity was not delivered.
+            market_users = []
+            if order.market_id:
+                from app.models import MarketUser
+                market_users = self.db.query(MarketUser).filter(MarketUser.market_id == order.market_id).all()
+
+            for mu in market_users:
+                try:
+                    from app.services.notification_service import NotificationService
+
+                    NotificationService(self.db).create(
+                        message=(
+                            f"Your order {order.order_number} was approved but only part of the requested quantity was delivered "
+                            f"because stock was low. The approved quantity is shown in the order details."
+                        ),
+                        user_id=mu.user_id,
+                        role="market",
+                        entity_type="order",
+                        entity_id=order.id,
+                    )
+                except Exception:
+                    pass
+
+        self.audit.log_order_approval(order.id, admin.id, order_number=order.order_number, delivered=delivered_map)
         return self.orders.save(order)
 
     def reject(self, order_id: int, admin: User, reason: str = "") -> Order:

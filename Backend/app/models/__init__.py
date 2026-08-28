@@ -21,6 +21,7 @@ from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.models.user_role import UserRoleEntry
+from app.models.inbox_entry import InboxEntry
 
 __all__ = [
     "Base",
@@ -44,4 +45,5 @@ __all__ = [
     "User",
     "UserRole",
     "UserRoleEntry",
+    "InboxEntry",
 ]

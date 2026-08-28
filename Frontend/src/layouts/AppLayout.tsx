@@ -8,6 +8,7 @@ import {
   LogOut, ChevronDown, Bell, Warehouse, FileText, Settings, Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import NotificationsList from "@/components/NotificationsList";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -27,7 +28,7 @@ const navItems: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: <LayoutDashboard className="h-4 w-4" />, roles: ["admin"] },
   { label: "Products (Buy)", href: "/admin/products/buy", icon: <ShoppingBag className="h-4 w-4" />, roles: ["admin"] },
   { label: "Products (Sell)", href: "/admin/products/sell", icon: <Package className="h-4 w-4" />, roles: ["admin"] },
-  { label: "Products (Stock)", href: "/admin/products/stock", icon: <Layers className="h-4 w-4" />, roles: ["admin"] },
+  { label: "Stock", href: "/admin/products/stock", icon: <Layers className="h-4 w-4" />, roles: ["admin"] },
   { label: "Categories", href: "/admin/categories", icon: <Tags className="h-4 w-4" />, roles: ["admin"] },
   { label: "Suppliers", href: "/admin/suppliers", icon: <Truck className="h-4 w-4" />, roles: ["admin"] },
   { label: "Markets", href: "/admin/markets", icon: <Store className="h-4 w-4" />, roles: ["admin"] },
@@ -110,9 +111,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               {resolvedTheme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
 
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-            </Button>
+            {/* Notifications dropdown wired to backend */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <div className="max-h-64 overflow-auto">
+                  {/* Notification list will be rendered by a NotificationsProvider or directly here via hooks */}
+                  <NotificationsList />
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <Separator orientation="vertical" className="h-6" />
 

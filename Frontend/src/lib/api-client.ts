@@ -1,4 +1,4 @@
-import axios from "axios";
+﻿import axios from "axios";
 
 const api = axios.create({
   baseURL: "/api/v1",
@@ -51,7 +51,8 @@ export function loadTokens() {
 
 api.interceptors.request.use((config) => {
   if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+    if (!config.headers) config.headers = {} as any;
+    config.headers.Authorization = 'Bearer ' + accessToken;
   }
   return config;
 });
@@ -66,7 +67,8 @@ api.interceptors.response.use(
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = 'Bearer ' + (token as string);
           return api(originalRequest);
         });
       }
@@ -80,7 +82,8 @@ api.interceptors.response.use(
         });
         setTokens(data.access_token, data.refresh_token);
         processQueue(null, data.access_token);
-        originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = 'Bearer ' + data.access_token;
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);

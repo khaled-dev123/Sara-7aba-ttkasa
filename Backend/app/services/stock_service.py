@@ -63,9 +63,11 @@ class StockService:
     ) -> StockMovement:
         product = self._get_product(product_id)
         product.current_stock += quantity
-        return self.record(
+        movement = self.record(
             product_id, movement_type, quantity, reference_type, reference_id, created_by
         )
+
+        return movement
 
     def remove_stock(
         self,

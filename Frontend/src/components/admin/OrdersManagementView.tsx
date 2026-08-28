@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useOrders, useMarkets, useProducts, useApproveOrder, useRejectOrder, useCreateOrder } from "@/hooks";
 import { type OrderDetail, type ProductDetail } from "@/types";
-import { StatusBadge, Pagination, TableSkeleton, EmptyState, useToast } from "@/components/shared";
+import { StatusBadge, Pagination, TableSkeleton, EmptyState, useToast, ConfirmDialog } from "@/components/shared";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -232,13 +232,27 @@ export function OrdersManagementView({
   const rejectMutation = useRejectOrder();
   const { addToast } = useToast();
 
-  const handleApprove = async (id: number) => {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmOrder, setConfirmOrder] = useState<OrderDetail | null>(null);
+
+  const doApprove = async (id: number) => {
     try {
-      await approveMutation.mutateAsync(id);
+      await approveMutation.mutateAsync({ id });
       addToast({ title: "Order approved successfully", description: `Order #${id} has been approved and stock was updated.` });
     } catch (err: any) {
       addToast({ title: "Approval Failed", description: err?.response?.data?.detail || "Failed to approve order", variant: "destructive" });
     }
+  };
+
+  const handleApprove = async (order: OrderDetail) => {
+    // check if approving will deplete any product stock
+    const willDeplete = order.items.some((item) => (item.current_stock ?? 0) === item.quantity && item.quantity > 0);
+    if (willDeplete) {
+      setConfirmOrder(order);
+      setConfirmOpen(true);
+      return;
+    }
+    await doApprove(order.id);
   };
 
   const handleReject = async () => {
@@ -402,7 +416,7 @@ export function OrdersManagementView({
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                              onClick={() => handleApprove(order.id)}
+                              onClick={() => handleApprove(order)}
                               disabled={approveMutation.isPending}
                               title="Approve order"
                             >
@@ -541,7 +555,7 @@ export function OrdersManagementView({
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={() => {
-                    handleApprove(selectedOrder.id);
+                  if (selectedOrder) handleApprove(selectedOrder);
                     setSelectedOrder(null);
                   }}
                 >
@@ -569,6 +583,31 @@ export function OrdersManagementView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation dialog for final-stock approvals */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) setConfirmOrder(null);
+        }}
+        title={"Approving will deplete stock"}
+        description={
+          confirmOrder
+            ? `Approving order #${confirmOrder.order_number} will fully deplete stock for: ${confirmOrder.items
+                .filter((i) => (i.current_stock ?? 0) === i.quantity)
+                .map((i) => `${i.product_name} (${i.quantity} ${i.unit || "pcs"})`)
+                .join(", ")}. Are you sure you want to proceed?`
+            : "This action will deplete stock for some products."
+        }
+        onConfirm={async () => {
+          if (!confirmOrder) return;
+          await doApprove(confirmOrder.id);
+          setConfirmOpen(false);
+          setConfirmOrder(null);
+        }}
+        variant="destructive"
+      />
 
       {/* Create Order Modal */}
       <CreateOrderModal open={createModalOpen} onClose={() => setCreateModalOpen(false)} />

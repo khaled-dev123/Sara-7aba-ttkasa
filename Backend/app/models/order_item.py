@@ -16,6 +16,8 @@ class OrderItem(Base):
         ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    # number of units actually delivered for this item (may be less than quantity)
+    delivered_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     order: Mapped["Order"] = relationship(back_populates="items")
     product: Mapped["Product"] = relationship()

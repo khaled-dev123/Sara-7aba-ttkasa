@@ -55,14 +55,10 @@ def test_cannot_double_approve(api, env, tokens):
     assert api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"]).status_code == 400
 
 
-def test_insufficient_stock_blocks_approve(api, env, tokens):
+def test_insufficient_stock_blocks_order_creation(api, env, tokens):
     r = _create_order(api, tokens["admin"], env["product_ids"], market_id=env["market_b_id"], qty=999999)
-    order_id = r.json()["id"]
-    appr = api("POST", f"/api/v1/orders/{order_id}/approve", token=tokens["admin"])
-    assert appr.status_code == 400
-    assert "Insufficient stock" in appr.json()["detail"]
-    # order stays pending
-    assert api("GET", f"/api/v1/orders/{order_id}", token=tokens["admin"]).json()["status"] == "pending"
+    assert r.status_code == 400
+    assert "exceeds available stock" in r.json()["detail"]
 
 
 def test_market_can_only_see_own_orders(api, env, tokens):

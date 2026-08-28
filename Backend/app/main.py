@@ -95,5 +95,7 @@ api.include_router(stock.router)
 api.include_router(analytics.router)
 api.include_router(dashboard.router)
 api.include_router(audit.router)
+from app.api.v1 import notifications
+api.include_router(notifications.router)
 
 app.include_router(api, prefix="/api/v1")

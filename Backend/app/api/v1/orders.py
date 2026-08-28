@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
@@ -7,7 +7,7 @@ from app.errors import AppError, PermissionDeniedError
 from app.models import User
 from app.models.enums import UserRole
 from app.schemas.common import Page, paginate
-from app.schemas.order import OrderCreate, OrderDetail, OrderReject
+from app.schemas.order import OrderCreate, OrderDetail, OrderReject, OrderApprove
 from app.services.order_service import OrderService
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -66,11 +66,12 @@ def get_order(
 @router.post("/{order_id}/approve", response_model=OrderDetail)
 def approve_order(
     order_id: int,
+    payload: OrderApprove | None = Body(default=None),
     db: Session = Depends(get_db),
     admin: User = admin_only,
 ):
     service = OrderService(db)
-    order = service.approve(order_id, admin)
+    order = service.approve(order_id, admin, payload.items if payload else None)
     return service._order_detail(order)
 
 

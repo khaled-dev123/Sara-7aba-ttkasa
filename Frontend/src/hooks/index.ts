@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { categoryApi, supplierApi, productApi, marketApi, orderApi, dashboardApi, analyticsApi, auditLogApi, stockApi, purchaseApi } from "@/api";
+import { categoryApi, supplierApi, productApi, marketApi, orderApi, dashboardApi, analyticsApi, auditLogApi, stockApi, purchaseApi, notificationApi } from "@/api";
 
 export function useCategories() {
   return useQuery({ queryKey: ["categories"], queryFn: categoryApi.list });
@@ -188,14 +188,25 @@ export function useCreateOrder() {
 export function useApproveOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: orderApi.approve,
-    onSuccess: (_data, orderId) => {
+    mutationFn: ({ id, payload }: { id: number; payload?: { items?: { product_id: number; quantity: number }[] } | null }) =>
+      orderApi.approve(id, payload),
+    onSuccess: (_data, variables) => {
+      const orderId = variables?.id;
       qc.invalidateQueries({ queryKey: ["orders"] });
-      qc.invalidateQueries({ queryKey: ["order", orderId] });
+      if (orderId) qc.invalidateQueries({ queryKey: ["order", orderId] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
   });
+}
+
+export function useNotifications() {
+  return useQuery({ queryKey: ["notifications"], queryFn: () => notificationApi.list() });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: number) => notificationApi.markRead(id), onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }) });
 }
 
 export function useRejectOrder() {
