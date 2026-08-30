@@ -13,7 +13,6 @@ import LoginPage from "@/pages/auth/LoginPage";
 // Admin
 import AdminDashboard from "@/pages/admin/Dashboard";
 import ProductsBuyPage from "@/pages/admin/ProductsBuyPage";
-import ProductsSellPage from "@/pages/admin/ProductsSellPage";
 import ProductsStockPage from "@/pages/admin/ProductsStockPage";
 import ProductDetailsPage from "@/pages/admin/ProductDetailsPage";
 import CategoriesPage from "@/pages/admin/CategoriesPage";
@@ -62,8 +61,9 @@ export default function App() {
 
                   {/* Admin Routes */}
                   <Route path="/admin" element={<ProtectedRoute roles={["admin"]}><AppLayout><AdminDashboard /></AppLayout></ProtectedRoute>} />
+                  <Route path="/admin/products" element={<Navigate to="/admin/products/buy" replace />} />
                   <Route path="/admin/products/buy" element={<ProtectedRoute roles={["admin"]}><AppLayout><ProductsBuyPage /></AppLayout></ProtectedRoute>} />
-                  <Route path="/admin/products/sell" element={<ProtectedRoute roles={["admin"]}><AppLayout><ProductsSellPage /></AppLayout></ProtectedRoute>} />
+                  <Route path="/admin/products/sell" element={<Navigate to="/admin/products/buy" replace />} />
                   <Route path="/admin/products/stock" element={<ProtectedRoute roles={["admin"]}><AppLayout><ProductsStockPage /></AppLayout></ProtectedRoute>} />
                   <Route path="/admin/products/:id" element={<ProtectedRoute roles={["admin"]}><AppLayout><ProductDetailsPage /></AppLayout></ProtectedRoute>} />
                   <Route path="/admin/categories" element={<ProtectedRoute roles={["admin"]}><AppLayout><CategoriesPage /></AppLayout></ProtectedRoute>} />

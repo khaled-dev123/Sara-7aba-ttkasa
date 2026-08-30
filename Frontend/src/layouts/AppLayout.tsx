@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
-  LayoutDashboard, Package, Tags, Truck, Store, ShoppingCart, ShoppingBag,
+  LayoutDashboard, Package, Tags, Truck, Store, ShoppingCart,
   ClipboardList, Shield, Menu, X, Sun, Moon,
   LogOut, ChevronDown, Bell, Warehouse, FileText, Settings, Layers
 } from "lucide-react";
@@ -26,8 +26,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: <LayoutDashboard className="h-4 w-4" />, roles: ["admin"] },
-  { label: "Products (Buy)", href: "/admin/products/buy", icon: <ShoppingBag className="h-4 w-4" />, roles: ["admin"] },
-  { label: "Products (Sell)", href: "/admin/products/sell", icon: <Package className="h-4 w-4" />, roles: ["admin"] },
+  { label: "Products", href: "/admin/products/buy", icon: <Package className="h-4 w-4" />, roles: ["admin"] },
   { label: "Stock", href: "/admin/products/stock", icon: <Layers className="h-4 w-4" />, roles: ["admin"] },
   { label: "Categories", href: "/admin/categories", icon: <Tags className="h-4 w-4" />, roles: ["admin"] },
   { label: "Suppliers", href: "/admin/suppliers", icon: <Truck className="h-4 w-4" />, roles: ["admin"] },

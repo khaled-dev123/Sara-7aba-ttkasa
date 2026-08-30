@@ -109,8 +109,8 @@ export default function ProductsBuyPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Products (Buy)"
-        description="Manage purchasing: suppliers, purchase prices and stock intake"
+        title="Products"
+        description="Manage product catalog, suppliers, pricing, and stock"
         actions={
           user?.role === "admin" ? (
             <Button onClick={openCreate}>
